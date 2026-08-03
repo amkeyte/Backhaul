@@ -1,0 +1,6 @@
+{
+  "id": "foundation",
+  "kind": "foundation",
+  "description": "Shared generic primitives: config, frontmatter, slugify, identity, templating, filesafety, markers, rollup, refs, version_check.",
+  "requires": []
+}

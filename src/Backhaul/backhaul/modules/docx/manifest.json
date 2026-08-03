@@ -1,0 +1,6 @@
+{
+  "id": "docx",
+  "kind": "module",
+  "description": "OOXML unpack/edit/repack workflow for .docx/.dotx: headers, footers, tables, styles.",
+  "requires": ["foundation"]
+}

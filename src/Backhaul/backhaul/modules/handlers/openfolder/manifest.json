@@ -1,0 +1,6 @@
+{
+  "id": "handlers.openfolder",
+  "kind": "module",
+  "description": "openfolder: URL-protocol handler (VBS + .reg + link-builder) — opens project folders in Explorer.",
+  "requires": ["foundation"]
+}

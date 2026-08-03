@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Backhaul machine config",
+  "description": "Per-machine, gitignored config (config.local.json) telling Backhaul where content roots live on this machine and which optional modules are enabled. See migration/MIGRATION_PLAN.md §6.",
+  "type": "object",
+  "required": ["version", "content_roots"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Backhaul repo version this config was last synced against (see VERSION file)."
+    },
+    "content_roots": {
+      "type": "object",
+      "description": "Paths to this machine's actual ticket/wiki content, outside the repo.",
+      "properties": {
+        "tickets": { "type": "string" },
+        "wiki": { "type": "string" }
+      },
+      "required": ["tickets", "wiki"]
+    },
+    "enabled_modules": {
+      "type": "array",
+      "description": "Optional module ids to enable (e.g. \"docx\", \"shortcuts\", \"handlers.editmd\", \"handlers.openfolder\"). BHT/BHW are always on and not listed here.",
+      "items": { "type": "string" }
+    }
+  }
+}

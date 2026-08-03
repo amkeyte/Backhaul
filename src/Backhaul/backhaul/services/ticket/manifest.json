@@ -1,0 +1,8 @@
+{
+  "id": "ticket",
+  "short_code": "BHT",
+  "kind": "service",
+  "description": "Passdown ticket system: new_ticket, close, board rollup.",
+  "requires": ["foundation"],
+  "always_enabled": true
+}

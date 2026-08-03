@@ -359,5 +359,13 @@ MigrationBackup/
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
 
+# Backhaul: per-machine config, never committed (see migration/MIGRATION_PLAN.md §6)
+config/config.local.json
+src/Backhaul/config/config.local.json
+
+# Backhaul: Python virtualenv (project-local, per migration/PYTHON_PROJECT_SETUP.md)
+.venv/
+*.egg-info/
+
 # Fody - auto-generated XML schema
 FodyWeavers.xsd

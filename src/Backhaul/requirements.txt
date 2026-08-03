@@ -1,0 +1,9 @@
+# Core (foundation + services)
+pyyaml
+
+# Optional, module-gated — install only if the corresponding module is enabled:
+# python-docx   # modules/docx
+# pylnk3        # modules/shortcuts
+
+# Dev
+pytest
