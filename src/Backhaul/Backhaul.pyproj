@@ -11,6 +11,7 @@
     <OutputPath>.</OutputPath>
     <Name>Backhaul</Name>
     <RootNamespace>Backhaul</RootNamespace>
+    <TestFramework>Pytest</TestFramework>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
@@ -44,11 +45,15 @@
     <Compile Include="backhaul\modules\__init__.py" />
     <Compile Include="backhaul\modules\docx\__init__.py" />
     <Compile Include="backhaul\modules\shortcuts\__init__.py" />
+    <Compile Include="backhaul\modules\shortcuts\lnk.py" />
+    <Compile Include="backhaul\modules\shortcuts\cli.py" />
     <Compile Include="backhaul\modules\handlers\__init__.py" />
     <Compile Include="backhaul\modules\handlers\editmd\__init__.py" />
     <Compile Include="backhaul\modules\handlers\openfolder\__init__.py" />
     <Compile Include="tests\__init__.py" />
     <Compile Include="tests\test_smoke.py" />
+    <Compile Include="tests\test_foundation.py" />
+    <Compile Include="tests\test_shortcuts.py" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="backhaul\foundation\manifest.json" />

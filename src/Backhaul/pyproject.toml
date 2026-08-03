@@ -12,6 +12,9 @@ docx = ["python-docx"]
 shortcuts = ["pylnk3"]
 dev = ["pytest"]
 
+[project.scripts]
+backhaul-lnk = "backhaul.modules.shortcuts.cli:main"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

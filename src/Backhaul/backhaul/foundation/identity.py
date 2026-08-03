@@ -32,5 +32,12 @@ class PathIdentity:
 
 
 def next_number(uid: str, existing_numbers: list[int]) -> int:
-    """Return the next sequential number for a given UID given the numbers already in use."""
-    raise NotImplementedError("stub — see migration/FOUNDATION_DESIGN.md")
+    """Return the next sequential number for a given UID given the numbers already in use.
+
+    `uid` isn't consulted for the arithmetic (existing_numbers is expected to already be
+    scoped to that UID by the caller) — it's accepted for symmetry with NumberedIdentity
+    and to keep call sites self-documenting.
+    """
+    if not existing_numbers:
+        return 1
+    return max(existing_numbers) + 1
