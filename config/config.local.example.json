@@ -1,0 +1,8 @@
+{
+  "version": "0.1.0",
+  "content_roots": {
+    "tickets": "PATH/TO/THIS/MACHINE/tickets",
+    "wiki": "PATH/TO/THIS/MACHINE/wiki"
+  },
+  "enabled_modules": []
+}
