@@ -15,7 +15,7 @@
     },
     "content_roots": {
       "type": "object",
-      "description": "Paths to this machine's actual ticket/wiki content, outside the repo.",
+      "description": "Paths to this machine's actual ticket/wiki content, outside the repo. Every value must be an absolute path on whatever machine is actually running the CLI right now — load_config() refuses to load a config containing a path that isn't absolute on the current OS (e.g. a Windows \"C:\\\\...\" path loaded inside a Linux sandbox parses as one opaque relative segment, not an error, and every write would silently land relative to cwd instead of touching real content — refusing to load is the safety net for that). A session running somewhere other than the machine this config was written for (e.g. a launched role's Cowork sandbox) can export the BACKHAUL_LOCAL_ROOT environment variable to re-root every value here onto wherever the project actually lives on that process's own filesystem before this check runs — see foundation/config.py and the README's \"BACKHAUL_LOCAL_ROOT\" section. Deliberately an env var, not a field here, since the correct value changes every session.",
       "properties": {
         "tickets": { "type": "string" },
         "wiki": { "type": "string" },

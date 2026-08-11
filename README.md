@@ -181,6 +181,46 @@ re-rooted onto `host_root` — computed as its offset from the project root, rej
 derived from `content_roots` are. Omit `host_root` to keep today's default: links are built
 straight from `content_roots` as printed, same as always.
 
+`host_root` only fixes what gets *printed*. The other direction — the CLI's own file I/O —
+still trusts `content_roots` literally, and a Windows path like `content_roots.tickets =
+"C:\\_local\\mcRepos\\backhaul\\tickets"` isn't absolute on Linux (`os.path.isabs` is false),
+so `pathlib` treats it as one opaque relative segment. Left unchecked, every write this config
+drives lands relative to wherever the CLI happened to be invoked from — a stray `BOARD.md`
+dropped at cwd, not an error, and easy to miss. `load_config()` refuses to load a config
+containing any `content_roots` path that isn't absolute on the machine actually running the
+command, specifically to turn that into a loud failure instead of a silent wrong-place write.
+
+### BACKHAUL_LOCAL_ROOT — actually doing I/O from a sandbox
+
+`host_root` fixes links; the fail-loud check above only stops the CLI from writing to the
+wrong place — neither one lets a launched role's sandbox actually *read or write* real
+content. `BACKHAUL_LOCAL_ROOT` is the runtime mount override that does: export it to tell this
+one process where the project's true root actually lives on *its own* filesystem right now
+(e.g. wherever Cowork mounted the project folder this session), and `load_config()` re-roots
+every `content_roots` value onto it before the absolute-path check runs — so a config written
+in Windows paths, which would otherwise be refused, loads and works correctly instead:
+
+```
+export BACKHAUL_LOCAL_ROOT=/sessions/<session>/mnt/mcRepos
+bht --config backhaul/config.local.json board
+```
+
+It's an environment variable, not a config field or CLI flag, on purpose: the correct value is
+different every fresh Cowork session (a per-machine `config.local.json` can't hold a value
+that changes every time), and a session issues many commands, so exporting it once beats
+repeating a flag on every call. Only `content_roots` values that fall under the project's
+computed Windows-style true root get remapped (via `PureWindowsPath`, so the split works even
+though the process itself may be on Linux) — a `client_folders` entry or any other path is
+untouched, same as `host_root`'s translation.
+
+This does not address concurrent writes from multiple sessions sharing one filesystem (e.g.
+several launched roles working the same project at once). Aggregate-file rebuilds
+(`BOARD.md`, `WIKI_INDEX.md`, `ROLES_INDEX.md`) are safe from corruption — `safe_write()`
+writes atomically — but not from lost updates, which is low-stakes since those files are
+always regenerated wholesale, never hand-edited. ID minting (`bht open`, `bhrm new`) has no
+locking and can collide under true concurrent creates; this is a known, accepted gap, not
+solved here.
+
 ## Dogfooding: Backhaul tracks itself
 
 Since this system exists, Backhaul's own development uses it: `backhaul/` at the repo root

@@ -59,7 +59,10 @@ omit both for this checkout's own default config.
 
 If `bht` might ever run somewhere other than the real machine (e.g. inside a role's Cowork
 sandbox — see `bhrole`'s meta page), set `host_root` in `config.local.json` so Edit/Folder links
-still point at the real path instead of wherever the CLI happens to be executing.
+still point at the real path instead of wherever the CLI happens to be executing. That fixes
+links only — to make `bht` itself able to read/write real content from a sandbox, export
+`BACKHAUL_LOCAL_ROOT` (see the README's "BACKHAUL_LOCAL_ROOT" section) before running any
+command.
 
 ## Related pages
 

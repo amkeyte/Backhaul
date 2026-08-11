@@ -75,6 +75,14 @@ directly, and every Edit link is re-rooted onto it. See the README's "Running fr
 other than the real machine" section for the general mechanism (it applies to `bht`/`bhw` too,
 not just roles).
 
+**Making the launched session's own CLI actually work.** `host_root` only fixes what gets
+*printed* into links — it doesn't help the sandbox's own `bht`/`bhw`/`bhrole` calls, which still
+read `content_roots` as configured (real Windows paths) and, unpatched, would silently no-op or
+write stray files at cwd. A launched role should `export BACKHAUL_LOCAL_ROOT=<wherever the
+project folder actually got mounted in this session>` once, right after installing the CLI and
+before running any other command — every `content_roots` value then gets re-rooted onto that for
+the rest of the session. See the README's "BACKHAUL_LOCAL_ROOT" section for the full mechanism.
+
 ## Frontmatter fields
 
 `slug`, `title` (required); `persona`, `purpose`, `authority`, `reports_to`, `status`

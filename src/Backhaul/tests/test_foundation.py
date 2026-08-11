@@ -265,19 +265,170 @@ def test_load_config_missing_required_keys(tmp_path: Path):
 
 def test_load_config_valid(tmp_path: Path):
     p = tmp_path / "config.local.json"
+    tickets_root = str(tmp_path / "tickets")
+    wiki_root = str(tmp_path / "wiki")
     p.write_text(
         json.dumps(
             {
                 "version": "0.1.0",
-                "content_roots": {"tickets": "T", "wiki": "W"},
+                "content_roots": {"tickets": tickets_root, "wiki": wiki_root},
                 "enabled_modules": ["docx"],
             }
         ),
         encoding="utf-8",
     )
     cfg = config.load_config(p)
-    assert cfg["content_roots"]["tickets"] == "T"
+    assert cfg["content_roots"]["tickets"] == tickets_root
     assert config.get_enabled_modules(cfg) == ["docx"]
+
+
+def test_load_config_rejects_non_absolute_content_root(tmp_path: Path):
+    # A Windows-style path loaded on this (POSIX) machine isn't absolute here — pathlib
+    # treats it as one opaque relative segment, and every write this config drives would
+    # silently land relative to cwd instead of touching real content. Refuse to load rather
+    # than risk that — see foundation/config.py's load_config docstring/comment.
+    p = tmp_path / "config.local.json"
+    p.write_text(
+        json.dumps(
+            {
+                "version": "0.1.0",
+                "content_roots": {
+                    "tickets": r"C:\_local\mcRepos\backhaul\tickets",
+                    "wiki": r"C:\_local\mcRepos\backhaul\wiki",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(config.ConfigError, match="aren't absolute on this machine"):
+        config.load_config(p)
+
+
+def test_load_config_accepts_when_only_some_roots_are_relative_but_still_flags_them(tmp_path: Path):
+    p = tmp_path / "config.local.json"
+    p.write_text(
+        json.dumps(
+            {
+                "version": "0.1.0",
+                "content_roots": {
+                    "tickets": str(tmp_path / "tickets"),  # absolute — fine
+                    "wiki": r"C:\_local\mcRepos\backhaul\wiki",  # not absolute here — flagged
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(config.ConfigError) as excinfo:
+        config.load_config(p)
+    assert "wiki=" in str(excinfo.value)
+    assert "tickets=" not in str(excinfo.value)
+
+
+# --- BACKHAUL_LOCAL_ROOT / _remap_content_roots ---------------------------------------------
+
+
+def test_remap_content_roots_rejoins_onto_local_root(tmp_path: Path):
+    content_roots = {
+        "tickets": r"C:\_local\mcRepos\backhaul\tickets",
+        "wiki": r"C:\_local\mcRepos\backhaul\wiki",
+        "roles": r"C:\_local\mcRepos\backhaul\roles",
+    }
+    local_root = str(tmp_path / "mcRepos")
+    remapped = config._remap_content_roots(content_roots, local_root)
+    assert remapped["tickets"] == str(Path(local_root, "backhaul", "tickets"))
+    assert remapped["wiki"] == str(Path(local_root, "backhaul", "wiki"))
+    assert remapped["roles"] == str(Path(local_root, "backhaul", "roles"))
+
+
+def test_remap_content_roots_leaves_value_outside_project_root_unchanged():
+    content_roots = {
+        "tickets": r"C:\_local\mcRepos\backhaul\tickets",
+        "wiki": r"D:\somewhere\else\wiki",
+    }
+    remapped = config._remap_content_roots(content_roots, r"/sandbox/mcRepos")
+    assert remapped["wiki"] == r"D:\somewhere\else\wiki"
+
+
+def test_load_config_applies_local_root_param_before_absolute_check(tmp_path: Path):
+    p = tmp_path / "config.local.json"
+    p.write_text(
+        json.dumps(
+            {
+                "version": "0.1.0",
+                "content_roots": {
+                    "tickets": r"C:\_local\mcRepos\backhaul\tickets",
+                    "wiki": r"C:\_local\mcRepos\backhaul\wiki",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    local_root = tmp_path / "mnt-mcrepos"
+    cfg = config.load_config(p, local_root=str(local_root))
+    assert cfg["content_roots"]["tickets"] == str(local_root / "backhaul" / "tickets")
+    assert cfg["content_roots"]["wiki"] == str(local_root / "backhaul" / "wiki")
+
+
+def test_load_config_reads_local_root_from_env_var(tmp_path: Path, monkeypatch):
+    p = tmp_path / "config.local.json"
+    p.write_text(
+        json.dumps(
+            {
+                "version": "0.1.0",
+                "content_roots": {
+                    "tickets": r"C:\_local\mcRepos\backhaul\tickets",
+                    "wiki": r"C:\_local\mcRepos\backhaul\wiki",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    local_root = tmp_path / "mnt-mcrepos"
+    monkeypatch.setenv(config.LOCAL_ROOT_ENV_VAR, str(local_root))
+    cfg = config.load_config(p)
+    assert cfg["content_roots"]["tickets"] == str(local_root / "backhaul" / "tickets")
+
+
+def test_load_config_explicit_local_root_param_overrides_env_var(tmp_path: Path, monkeypatch):
+    p = tmp_path / "config.local.json"
+    p.write_text(
+        json.dumps(
+            {
+                "version": "0.1.0",
+                "content_roots": {
+                    "tickets": r"C:\_local\mcRepos\backhaul\tickets",
+                    "wiki": r"C:\_local\mcRepos\backhaul\wiki",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    env_root = tmp_path / "from-env"
+    param_root = tmp_path / "from-param"
+    monkeypatch.setenv(config.LOCAL_ROOT_ENV_VAR, str(env_root))
+    cfg = config.load_config(p, local_root=str(param_root))
+    assert cfg["content_roots"]["tickets"] == str(param_root / "backhaul" / "tickets")
+
+
+def test_load_config_without_local_root_still_rejects_non_absolute(tmp_path: Path, monkeypatch):
+    """No local_root param and no env var set — behavior is unchanged from before this feature
+    existed (task #76's fail-loud check still applies)."""
+    monkeypatch.delenv(config.LOCAL_ROOT_ENV_VAR, raising=False)
+    p = tmp_path / "config.local.json"
+    p.write_text(
+        json.dumps(
+            {
+                "version": "0.1.0",
+                "content_roots": {
+                    "tickets": r"C:\_local\mcRepos\backhaul\tickets",
+                    "wiki": r"C:\_local\mcRepos\backhaul\wiki",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(config.ConfigError, match="aren't absolute on this machine"):
+        config.load_config(p)
 
 
 def test_load_config_rejects_schema_version_mismatch(tmp_path: Path):

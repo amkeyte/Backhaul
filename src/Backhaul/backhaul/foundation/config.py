@@ -1,7 +1,10 @@
 """Config loading.
 
 Every script reads a gitignored `config.local.json` fresh on each invocation — no reliance
-on env vars or cwd persistence, since the sandbox does not carry either between calls.
+on env vars or cwd persistence, since the sandbox does not carry either between calls. One
+deliberate exception: BACKHAUL_LOCAL_ROOT (see load_config's docstring) — a per-*session*, not
+per-machine, override, which is exactly why it belongs in an env var rather than the
+per-machine config.local.json file.
 
 See migration/MIGRATION_PLAN.md §6 (config + versioning design) and
 migration/PYTHON_PROJECT_SETUP.md for the resolved layout this reads from
@@ -11,8 +14,19 @@ migration/PYTHON_PROJECT_SETUP.md for the resolved layout this reads from
 from __future__ import annotations
 
 import json
-from pathlib import Path
+import os
+from pathlib import Path, PureWindowsPath
 from typing import Any
+
+#: Env var a session can export to tell every content_roots path where the project's true
+#: root actually is *on this process's own filesystem* — the mirror image of host_root (which
+#: says where a human should click; this says where the CLI should actually read/write, right
+#: now). Deliberately not a CLI flag: a session issues many commands, and exporting this once
+#: is far less friction than repeating a flag on every one. Deliberately not stored in
+#: config.local.json either: the correct value is different every time a fresh Cowork sandbox
+#: mounts the same project at a new, unpredictable path — a per-machine config file can't hold
+#: a value that changes every session, so it can't live there.
+LOCAL_ROOT_ENV_VAR = "BACKHAUL_LOCAL_ROOT"
 
 
 class ConfigError(Exception):
@@ -30,12 +44,52 @@ _REQUIRED_CONTENT_ROOTS = ("tickets", "wiki")
 CONFIG_SCHEMA_VERSION = "0.1.0"
 
 
-def load_config(config_path: str | Path) -> dict[str, Any]:
+def _remap_content_roots(content_roots: dict[str, Any], local_root: str) -> dict[str, Any]:
+    """Re-root every content_roots value onto local_root instead of wherever it was written
+    for — the mirror image of foundation/host_paths.to_host_path.
+
+    Parses each value with PureWindowsPath specifically (not plain Path) so a Windows-style
+    string like "C:\\_local\\mcRepos\\backhaul\\tickets" splits into segments correctly even
+    though this process itself may be on Linux, where plain Path/os.sep-based splitting can't
+    see backslashes as separators at all. Assumes the standard <project>/backhaul/<x>
+    convention (the project's Windows-style true root is content_roots["tickets"]'s
+    grandparent) — a value that doesn't fall under that root is left unchanged rather than
+    guessed at.
+    """
+    tickets_value = content_roots.get("tickets")
+    if not isinstance(tickets_value, str) or not tickets_value:
+        return content_roots
+    win_root = PureWindowsPath(tickets_value).parent.parent
+
+    remapped = dict(content_roots)
+    for key, value in content_roots.items():
+        if not isinstance(value, str) or not value:
+            continue
+        win_path = PureWindowsPath(value)
+        try:
+            rel_parts = win_path.relative_to(win_root).parts
+        except ValueError:
+            continue
+        remapped[key] = str(Path(local_root, *rel_parts)) if rel_parts else str(Path(local_root))
+    return remapped
+
+
+def load_config(config_path: str | Path, *, local_root: str | None = None) -> dict[str, Any]:
     """Load and return the local machine config as a dict.
 
     Raises ConfigError if the file is missing, not valid JSON, or fails the minimal shape
     check against config/config.schema.json (required keys only — full JSON Schema
     validation is planned but not yet implemented here).
+
+    `local_root`, if given (or, when omitted, read from the BACKHAUL_LOCAL_ROOT environment
+    variable — see that constant's docstring for why an env var and not a config field), tells
+    this call where the project's true root actually lives on *this* process's own filesystem,
+    and every content_roots value gets remapped onto it before anything else happens —
+    specifically so a role's Cowork sandbox, which can't do file I/O against content_roots
+    written as the real machine's Windows paths, can point this one call/session at wherever
+    it's actually mounted here instead. The absolute-path check below then validates the
+    *remapped* values, so a config that would otherwise be rejected as unusable on this
+    machine loads and works correctly once local_root corrects it.
     """
     p = Path(config_path)
     if not p.is_file():
@@ -74,6 +128,33 @@ def load_config(config_path: str | Path) -> dict[str, Any]:
     missing_roots = [k for k in _REQUIRED_CONTENT_ROOTS if k not in content_roots]
     if missing_roots:
         raise ConfigError(f"{p}: content_roots missing required key(s): {', '.join(missing_roots)}")
+
+    if local_root is None:
+        local_root = os.environ.get(LOCAL_ROOT_ENV_VAR)
+    if local_root:
+        content_roots = _remap_content_roots(content_roots, local_root)
+        config["content_roots"] = content_roots
+
+    # A content_root written for a different machine/OS than the one running this process
+    # doesn't fail — it silently parses as a relative path (e.g. a Windows "C:\..." string,
+    # read on Linux, isn't absolute — pathlib treats it as one opaque relative segment,
+    # .parent collapses to ".", and every write this config drives lands relative to
+    # wherever the CLI happened to be invoked from instead of touching real content at all).
+    # Refusing to load is safer than a silent no-op or a stray file dropped at cwd — this
+    # exact failure mode is why: see foundation/host_paths.py and the `bhrole` meta wiki page
+    # for the fuller story (2026-08-11).
+    bad_roots = [
+        k for k, v in content_roots.items()
+        if isinstance(v, str) and v and not os.path.isabs(v)
+    ]
+    if bad_roots:
+        bad_list = ", ".join(f"{k}={content_roots[k]!r}" for k in bad_roots)
+        raise ConfigError(
+            f"{p}: content_roots has path(s) that aren't absolute on this machine: {bad_list}. "
+            f"This usually means the config was written for a different OS/machine than the one "
+            f"running this command right now (e.g. a Windows path loaded inside a Linux sandbox) "
+            f"— refusing to proceed rather than silently write to the wrong place or no-op."
+        )
 
     return config
 
