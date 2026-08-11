@@ -52,7 +52,11 @@ bhw projects
 
 `--project <name>` / `--config <path>` selects the project, same as BHT.
 
+Set `host_root` in `config.local.json` if `bhw` might run somewhere other than the real machine
+(see BHT's meta page and `bhrole`'s) so Edit links stay correct regardless.
+
 ## Related pages
 
 - [BHT — Ticket Conventions](../meta/bht.md)
 - [BHRM — Roadmap Conventions](../meta/bhrm.md)
+- [BHRole — Roles Conventions](../meta/bhrole.md)

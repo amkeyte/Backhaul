@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from backhaul.foundation import claude_link, client_registry, config, filesafety, frontmatter, handler_uri, header, identity, markers, projects, rollup, slugify, templating
+from backhaul.foundation import claude_link, client_registry, config, filesafety, frontmatter, handler_uri, header, host_paths, identity, markers, projects, rollup, slugify, templating
 
 
 def test_frontmatter_roundtrip(tmp_path: Path):
@@ -304,6 +304,56 @@ def test_get_project_name_falls_back_to_grandparent_folder_name(tmp_path: Path):
     tickets_root = tmp_path / "SomeProject" / "backhaul" / "tickets"
     cfg = {"content_roots": {"tickets": str(tickets_root)}}
     assert config.get_project_name(cfg) == "SomeProject"
+
+
+def test_get_repo_url_uses_explicit_value():
+    cfg = {"repo_url": "https://github.com/amkeyte/Backhaul"}
+    assert config.get_repo_url(cfg) == "https://github.com/amkeyte/Backhaul"
+
+
+def test_get_repo_url_none_when_absent():
+    assert config.get_repo_url({}) is None
+
+
+def test_get_host_root_uses_explicit_value():
+    cfg = {"host_root": r"C:\_local\mcRepos"}
+    assert config.get_host_root(cfg) == r"C:\_local\mcRepos"
+
+
+def test_get_host_root_none_when_absent():
+    assert config.get_host_root({}) is None
+
+
+# --- host_paths.to_host_path --------------------------------------------------------------
+
+
+def test_to_host_path_returns_unchanged_without_host_root():
+    path = "/sessions/sandbox/mnt/mcRepos/backhaul/tickets/T_1.md"
+    assert host_paths.to_host_path(path, runtime_root="/sessions/sandbox/mnt/mcRepos", host_root=None) == path
+
+
+def test_to_host_path_translates_nested_file():
+    path = "/sessions/sandbox/mnt/mcRepos/backhaul/roles/qa.md"
+    result = host_paths.to_host_path(
+        path, runtime_root="/sessions/sandbox/mnt/mcRepos", host_root=r"C:\_local\mcRepos"
+    )
+    assert result == r"C:\_local\mcRepos\backhaul\roles\qa.md"
+
+
+def test_to_host_path_uses_forward_slash_when_host_root_looks_posix():
+    path = "/sessions/sandbox/mnt/mcRepos/backhaul/roles/qa.md"
+    result = host_paths.to_host_path(
+        path, runtime_root="/sessions/sandbox/mnt/mcRepos", host_root="/real/mcRepos"
+    )
+    assert result == "/real/mcRepos/backhaul/roles/qa.md"
+
+
+def test_to_host_path_strips_trailing_separator_from_host_root():
+    path = "/sessions/sandbox/mnt/mcRepos/backhaul/roles/qa.md"
+    result = host_paths.to_host_path(
+        path, runtime_root="/sessions/sandbox/mnt/mcRepos", host_root="C:\\_local\\mcRepos\\"
+    )
+    assert result == r"C:\_local\mcRepos\backhaul\roles\qa.md"
 
 
 def test_get_enabled_modules_defaults_empty():

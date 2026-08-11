@@ -163,6 +163,19 @@ def test_index_edit_link_uses_editmd_scheme(tmp_path: Path):
     assert f"editmd:///{path.as_posix()}" in content
 
 
+def test_index_edit_link_uses_host_root_when_given(tmp_path: Path):
+    # Real backhaul/ convention: content_roots.wiki is <project>/backhaul/wiki.
+    wiki_root = tmp_path / "mcRepos" / "backhaul" / "wiki"
+    path = create.create_page(wiki_root=wiki_root, category="meta", title="About")
+
+    index_path = tmp_path / "mcRepos" / "backhaul" / "WIKI_INDEX.md"
+    index.build_index(wiki_root, index_path, host_root=r"C:\_local\mcRepos")
+    content = index_path.read_text(encoding="utf-8")
+
+    assert "editmd:///C:/_local/mcRepos/backhaul/wiki/meta/about.md" in content
+    assert str(tmp_path) not in content
+
+
 def test_build_index_category_prefix_scopes_to_matching_and_nested(tmp_path: Path):
     wiki_root = tmp_path / "wiki"
     create.create_page(wiki_root=wiki_root, category="frontiermode", title="FM Overview")

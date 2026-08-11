@@ -33,6 +33,14 @@
       "type": "object",
       "description": "Per-client UID -> project folder path (e.g. \"UW\": \"C:\\\\Projects\\\\University of Washington\"), used by the ticket header's Folder link (opened via the openfolder: protocol handler). A client UID with no entry here falls back to content_roots.tickets's parent directory.",
       "additionalProperties": { "type": "string" }
+    },
+    "repo_url": {
+      "type": "string",
+      "description": "Optional — this Backhaul checkout's own git remote (e.g. \"https://github.com/amkeyte/Backhaul\"). When set, modules/roles' Launch links include a `pip install git+<repo_url>...` line so a freshly launched role session (a bare sandbox with only the project folder attached, not Backhaul's own source) can install the bht/bhw/bhrm/bhrole CLI for itself before doing anything else. Omit to leave that line out of Launch links entirely."
+    },
+    "host_root": {
+      "type": "string",
+      "description": "Optional — this project's real root path on the machine a human will actually open links on (e.g. \"C:\\\\_local\\\\mcRepos\"), independent of wherever content_roots currently resolves at runtime. Set this when the CLI might run somewhere other than that real machine (e.g. a Cowork sandbox mounting the project under a different path) so editmd:/openfolder: Edit and Folder links, and role Launch links' project-folder line, still point at the real path instead of baking in wherever the CLI happened to execute. Omit to keep today's default: links are built straight from content_roots as printed."
     }
   }
 }

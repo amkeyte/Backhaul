@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from backhaul.foundation import host_paths
 from backhaul.foundation.client_registry import (
     RegistryError,
     find_uid,
@@ -33,7 +34,9 @@ __all__ = [
 ]
 
 
-def resolve_client_folder(config: dict, uid: str, tickets_root: str | Path) -> Path:
+def resolve_client_folder(
+    config: dict, uid: str, tickets_root: str | Path, *, host_root: str | None = None
+) -> Path:
     """Resolve the project folder associated with a client UID, for the ticket header's
     Folder link (opened via the openfolder: protocol handler — see modules/handlers/openfolder).
 
@@ -42,12 +45,17 @@ def resolve_client_folder(config: dict, uid: str, tickets_root: str | Path) -> P
     back to ".../Fronthaul") — the sane default for a client with no dedicated project folder
     configured yet.
 
-    Neither branch calls .resolve() — tickets_root and client_folders entries are expected to
-    already be correct, absolute paths as configured (config.local.json's docstring requires
-    real machine paths), so this returns them as given rather than re-deriving them against
-    whatever filesystem this code happens to be executing on right now.
+    An explicit client_folders entry is never touched by `host_root` — it's already expected
+    to be a correct, real machine path as configured (config.local.json's docstring requires
+    this), unrelated to wherever content_roots currently resolves at runtime. Only the
+    *fallback* branch is runtime-rooted (derived from tickets_root), so only it gets translated
+    via foundation/host_paths.to_host_path when `host_root` is given — see that module for why.
     """
     folders = config.get("client_folders", {})
     if uid in folders:
         return Path(folders[uid])
-    return Path(tickets_root).parent
+    fallback = Path(tickets_root).parent
+    if host_root is None:
+        return fallback
+    runtime_root = Path(tickets_root).parent.parent
+    return Path(host_paths.to_host_path(fallback, runtime_root=runtime_root, host_root=host_root))

@@ -5,6 +5,7 @@ Only synthetic fixtures under tmp_path are used here, never real project data, p
 migration/PYTHON_PROJECT_SETUP.md's fixtures note.
 """
 
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -194,6 +195,54 @@ def test_build_launch_link_omits_folder_line_without_project_root(tmp_path: Path
     assert link == "claude://cowork/new?q=You%20are%20QA."
 
 
+def test_build_launch_link_includes_pip_install_line_when_repo_url_given(tmp_path: Path):
+    roles_root = tmp_path / "roles"
+    path = _create.create_role(roles_root=roles_root, title="QA", slug="qa")
+    doc = _frontmatter.parse(path)
+    doc.body = doc.body.replace(
+        "(Write the actual bootstrap prompt here: what the role is, what persona it plays if any, what\n"
+        "to read before doing anything else — orient, instruments, where the work currently stands —\n"
+        "then \"hold your lane\" boundaries, then instructions to summarize back and wait for input\n"
+        "rather than starting work immediately.)",
+        "You are QA.",
+    )
+    _frontmatter.write(doc)
+
+    link = _launch.build_launch_link(
+        path,
+        project_root=r"C:\_local\source\LunaFlow_A",
+        repo_url="https://github.com/amkeyte/Backhaul",
+    )
+    assert link is not None
+    assert "folder=" not in link
+
+    decoded = urllib.parse.unquote(link[len("claude://cowork/new?q="):])
+    # repo_url preamble comes first, then the project-folder line, then the role's own prompt.
+    install_pos = decoded.find('pip install "git+https://github.com/amkeyte/Backhaul.git#subdirectory=src/Backhaul"')
+    folder_pos = decoded.find("This role's project folder is C:\\_local\\source\\LunaFlow_A")
+    prompt_pos = decoded.find("You are QA.")
+    assert -1 < install_pos < folder_pos < prompt_pos
+
+
+def test_build_launch_link_strips_trailing_git_suffix_from_repo_url(tmp_path: Path):
+    roles_root = tmp_path / "roles"
+    path = _create.create_role(roles_root=roles_root, title="QA", slug="qa")
+    doc = _frontmatter.parse(path)
+    doc.body = doc.body.replace(
+        "(Write the actual bootstrap prompt here: what the role is, what persona it plays if any, what\n"
+        "to read before doing anything else — orient, instruments, where the work currently stands —\n"
+        "then \"hold your lane\" boundaries, then instructions to summarize back and wait for input\n"
+        "rather than starting work immediately.)",
+        "You are QA.",
+    )
+    _frontmatter.write(doc)
+
+    link = _launch.build_launch_link(path, repo_url="https://github.com/amkeyte/Backhaul.git")
+    decoded = urllib.parse.unquote(link[len("claude://cowork/new?q="):])
+    assert "Backhaul.git.git" not in decoded
+    assert 'git+https://github.com/amkeyte/Backhaul.git#subdirectory=src/Backhaul' in decoded
+
+
 def test_build_launch_link_none_without_bootstrap_prompt(tmp_path: Path):
     roles_root = tmp_path / "roles"
     path = roles_root / "empty.md"
@@ -255,6 +304,39 @@ def test_build_index_no_roles_yet(tmp_path: Path):
     out = tmp_path / "ROLES_INDEX.md"
     _index.build_index(roles_root, out)
     assert "_No roles defined yet._" in out.read_text(encoding="utf-8")
+
+
+def test_build_index_launch_link_includes_pip_install_when_repo_url_given(tmp_path: Path):
+    roles_root = tmp_path / "roles"
+    path = _create.create_role(roles_root=roles_root, title="QA", slug="qa")
+    doc = _frontmatter.parse(path)
+    doc.body = doc.body.replace(
+        "(Write the actual bootstrap prompt here: what the role is, what persona it plays if any, what\n"
+        "to read before doing anything else — orient, instruments, where the work currently stands —\n"
+        "then \"hold your lane\" boundaries, then instructions to summarize back and wait for input\n"
+        "rather than starting work immediately.)",
+        "You are QA.",
+    )
+    _frontmatter.write(doc)
+
+    out = tmp_path / "ROLES_INDEX.md"
+    _index.build_index(roles_root, out, repo_url="https://github.com/amkeyte/Backhaul")
+    content = out.read_text(encoding="utf-8")
+    decoded = urllib.parse.unquote(content)
+    assert 'pip install "git+https://github.com/amkeyte/Backhaul.git#subdirectory=src/Backhaul"' in decoded
+
+
+def test_build_index_edit_link_uses_host_root_when_given(tmp_path: Path):
+    # Real backhaul/ convention: content_roots.roles is <project>/backhaul/roles.
+    roles_root = tmp_path / "mcRepos" / "backhaul" / "roles"
+    _create.create_role(roles_root=roles_root, title="QA", slug="qa")
+
+    out = tmp_path / "mcRepos" / "backhaul" / "ROLES_INDEX.md"
+    _index.build_index(roles_root, out, host_root=r"C:\_local\mcRepos")
+    content = out.read_text(encoding="utf-8")
+
+    assert "editmd:///C:/_local/mcRepos/backhaul/roles/qa.md" in content
+    assert str(tmp_path) not in content
 
 
 def test_build_index_includes_launch_link_when_bootstrap_prompt_present(tmp_path: Path):

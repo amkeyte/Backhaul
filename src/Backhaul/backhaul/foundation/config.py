@@ -102,3 +102,26 @@ def get_project_name(config: dict[str, Any]) -> str:
         return str(name)
     tickets_root = Path(config["content_roots"]["tickets"])
     return tickets_root.parent.parent.name or "Backhaul"
+
+
+def get_repo_url(config: dict[str, Any]) -> str | None:
+    """Return this checkout's own git remote URL, if configured — e.g.
+    "https://github.com/amkeyte/Backhaul". Used by modules/roles/launch.py to tell a freshly
+    launched role session (a bare sandbox with only the project folder attached, not Backhaul's
+    own source) how to `pip install` the bht/bhw/bhrm/bhrole CLI for itself. Optional — a
+    config without it just gets a Launch link with no install instructions, same graceful-omit
+    pattern the rest of the optional fields use."""
+    url = config.get("repo_url")
+    return str(url) if url else None
+
+
+def get_host_root(config: dict[str, Any]) -> str | None:
+    """Return this project's "real" root path, if configured — e.g.
+    "C:\\_local\\mcRepos", the path a human should actually see and click, independent of
+    wherever content_roots currently resolves at runtime (e.g. a Cowork sandbox mount). Used
+    by foundation/host_paths.py to re-root absolute-path links (editmd:, openfolder:, and role
+    Launch links) so they work on the target machine instead of baking in wherever the CLI
+    happened to be running when it built them. Optional — a config without it just gets links
+    built straight from content_roots as printed, today's long-standing default behavior."""
+    val = config.get("host_root")
+    return str(val) if val else None

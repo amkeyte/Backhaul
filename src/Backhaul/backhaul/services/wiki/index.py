@@ -8,7 +8,15 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from backhaul.foundation import filesafety, frontmatter as _frontmatter, handler_uri, header, markers, rollup
+from backhaul.foundation import (
+    filesafety,
+    frontmatter as _frontmatter,
+    handler_uri,
+    header,
+    host_paths,
+    markers,
+    rollup,
+)
 
 from .schema import validate
 
@@ -27,14 +35,17 @@ def _relpath(target: str | Path, start: str | Path) -> str:
     return os.path.relpath(Path(target), Path(start)).replace(os.sep, "/")
 
 
-def _row(item: dict, index_dir: Path) -> str:
+def _row(item: dict, index_dir: Path, *, runtime_root: Path, host_root: str | None) -> str:
     page = validate(item)
     path = item.get("_path")
     if isinstance(path, Path):
         # Title links to the page itself (view it — e.g. via Markdown Viewer), relative to
-        # wherever the index lives. Edit opens it in Notepad++ via the editmd: handler.
+        # wherever the index lives. Edit opens it in Notepad++ via the editmd: handler —
+        # host_root (see foundation/host_paths.py), when configured, re-roots the absolute
+        # path onto the real machine instead of wherever this code is currently running.
         title_cell = f"[{page.title}]({_relpath(path, index_dir)})"
-        edit = f"[Edit]({handler_uri.build_uri(_EDIT_SCHEME, path)})"
+        host_path = host_paths.to_host_path(path, runtime_root=runtime_root, host_root=host_root)
+        edit = f"[Edit]({handler_uri.build_uri(_EDIT_SCHEME, host_path)})"
     else:
         title_cell = page.title
         edit = ""
@@ -42,12 +53,14 @@ def _row(item: dict, index_dir: Path) -> str:
     return f"| {title_cell} | {page.status} | {summary} | {edit} |"
 
 
-def _render_table(items: list[dict], index_dir: Path) -> str:
+def _render_table(
+    items: list[dict], index_dir: Path, *, runtime_root: Path, host_root: str | None
+) -> str:
     if not items:
         return "_No pages._\n"
     header = "| " + " | ".join(_COLUMNS) + " |"
     sep = "|" + "|".join(["---"] * len(_COLUMNS)) + "|"
-    rows = [_row(item, index_dir) for item in items]
+    rows = [_row(item, index_dir, runtime_root=runtime_root, host_root=host_root) for item in items]
     return "\n".join([header, sep, *rows]) + "\n"
 
 
@@ -65,6 +78,7 @@ def render_index(
     title: str = "# Wiki Index",
     dashboard_path: str | Path | None = None,
     project_name: str = "Backhaul",
+    host_root: str | None = None,
 ) -> str:
     """Collect wiki pages under wiki_root and render the index's markdown body.
 
@@ -85,6 +99,7 @@ def render_index(
     """
     wiki_root = Path(wiki_root)
     index_dir = Path(index_dir) if index_dir is not None else wiki_root
+    runtime_root = wiki_root.parent.parent
 
     spec = rollup.CollectSpec(
         root=wiki_root,
@@ -109,7 +124,7 @@ def render_index(
         section_heading = category if category else "(uncategorized)"
         sections.append(f"## {section_heading}")
         sections.append("")
-        sections.append(_render_table(items, index_dir))
+        sections.append(_render_table(items, index_dir, runtime_root=runtime_root, host_root=host_root))
     return "\n".join(sections)
 
 
@@ -121,6 +136,7 @@ def build_index(
     title: str = "# Wiki Index",
     dashboard_path: str | Path | None = None,
     project_name: str = "Backhaul",
+    host_root: str | None = None,
 ) -> None:
     """Collect wiki pages under wiki_root and write the rendered category index.
 
@@ -129,7 +145,7 @@ def build_index(
     output_path = Path(output_path)
     content = render_index(
         wiki_root, index_dir=output_path.parent, category_prefix=category_prefix, title=title,
-        dashboard_path=dashboard_path, project_name=project_name,
+        dashboard_path=dashboard_path, project_name=project_name, host_root=host_root,
     )
     filesafety.safe_write(output_path, content, overwrite=True)
 

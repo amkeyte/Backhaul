@@ -62,6 +62,7 @@ def _dashboard_path(tickets_root: Path) -> Path:
 def _cmd_open(args: argparse.Namespace) -> int:
     cfg = _config.load_config(_resolve_config_path(args))
     tickets_root = _tickets_root(cfg)
+    host_root = _config.get_host_root(cfg)
     path = _create.create_ticket(
         tickets_root=tickets_root,
         registry_path=_registry_path(tickets_root),
@@ -74,7 +75,7 @@ def _cmd_open(args: argparse.Namespace) -> int:
     )
 
     uid = _frontmatter.parse(path).frontmatter["uid"]
-    folder = _registry.resolve_client_folder(cfg, uid, tickets_root)
+    folder = _registry.resolve_client_folder(cfg, uid, tickets_root, host_root=host_root)
     dashboard_path = _dashboard_path(tickets_root)
     project_name = _config.get_project_name(cfg)
 
@@ -83,7 +84,10 @@ def _cmd_open(args: argparse.Namespace) -> int:
         path, board_path, folder_path=folder,
         dashboard_path=dashboard_path, project_name=project_name,
     )
-    _board.build_board(tickets_root, board_path, dashboard_path=dashboard_path, project_name=project_name)
+    _board.build_board(
+        tickets_root, board_path,
+        dashboard_path=dashboard_path, project_name=project_name, host_root=host_root,
+    )
     print(f"OK: opened {path.name}")
     return 0
 
@@ -114,6 +118,7 @@ def _cmd_close(args: argparse.Namespace) -> int:
     _board.build_board(
         tickets_root, _board_path(tickets_root),
         dashboard_path=_dashboard_path(tickets_root), project_name=_config.get_project_name(cfg),
+        host_root=_config.get_host_root(cfg),
     )
     print(f"OK: closed {path.name}")
     return 0
@@ -126,6 +131,7 @@ def _cmd_board(args: argparse.Namespace) -> int:
     _board.build_board(
         tickets_root, out,
         dashboard_path=_dashboard_path(tickets_root), project_name=_config.get_project_name(cfg),
+        host_root=_config.get_host_root(cfg),
     )
     print(f"OK: wrote board to {out}")
     return 0
@@ -140,6 +146,7 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
     """
     cfg = _config.load_config(_resolve_config_path(args))
     tickets_root = _tickets_root(cfg)
+    host_root = _config.get_host_root(cfg)
     board_path = _board_path(tickets_root)
     dashboard_path = _dashboard_path(tickets_root)
     project_name = _config.get_project_name(cfg)
@@ -156,14 +163,17 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
         uid = doc.frontmatter.get("uid")
         if not uid:
             continue
-        folder = _registry.resolve_client_folder(cfg, uid, tickets_root)
+        folder = _registry.resolve_client_folder(cfg, uid, tickets_root, host_root=host_root)
         _board.refresh_board_link(
             ticket_path, board_path, folder_path=folder,
             dashboard_path=dashboard_path, project_name=project_name,
         )
         count += 1
 
-    _board.build_board(tickets_root, board_path, dashboard_path=dashboard_path, project_name=project_name)
+    _board.build_board(
+        tickets_root, board_path,
+        dashboard_path=dashboard_path, project_name=project_name, host_root=host_root,
+    )
     print(f"OK: refreshed {count} ticket(s), rebuilt the board at {board_path}")
     return 0
 

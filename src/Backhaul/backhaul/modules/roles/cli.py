@@ -76,10 +76,12 @@ def _dashboard_path(roles_root: Path) -> Path:
     return roles_root.parent.parent / "BACKHAUL.md"
 
 
-def _project_root(roles_root: Path) -> Path:
+def _project_root(roles_root: Path, host_root: str | None) -> str | Path:
     # Same folder _dashboard_path resolves BACKHAUL.md's parent to — the project's true root,
-    # which is what a role's Launch link attaches to Cowork as the working folder.
-    return roles_root.parent.parent
+    # which is what a role's Launch link names as the folder it needs (see modules/roles/
+    # launch.py). When host_root is configured, that IS the real path to tell a human about —
+    # use it directly rather than the runtime-resolved path (which may be a sandbox mount).
+    return host_root if host_root is not None else roles_root.parent.parent
 
 
 def _cmd_new(args: argparse.Namespace) -> int:
@@ -100,10 +102,12 @@ def _cmd_new(args: argparse.Namespace) -> int:
         path, _index_path(roles_root),
         dashboard_path=_dashboard_path(roles_root), project_name=_config.get_project_name(cfg),
     )
+    host_root = _config.get_host_root(cfg)
     _index.build_index(
         roles_root, _index_path(roles_root),
         dashboard_path=_dashboard_path(roles_root), project_name=_config.get_project_name(cfg),
-        project_root=_project_root(roles_root),
+        project_root=_project_root(roles_root, host_root), repo_url=_config.get_repo_url(cfg),
+        host_root=host_root,
     )
     print(f"OK: created {path.name}")
     return 0
@@ -113,10 +117,13 @@ def _cmd_index(args: argparse.Namespace) -> int:
     cfg = _load_enabled_config(args)
     roles_root = _roles_root(cfg)
     out = Path(args.output) if args.output else _index_path(roles_root)
+    host_root = _config.get_host_root(cfg)
     kwargs = {
         "dashboard_path": _dashboard_path(roles_root),
         "project_name": _config.get_project_name(cfg),
-        "project_root": _project_root(roles_root),
+        "project_root": _project_root(roles_root, host_root),
+        "repo_url": _config.get_repo_url(cfg),
+        "host_root": host_root,
     }
     if args.title:
         kwargs["title"] = args.title
@@ -152,10 +159,12 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
         )
         count += 1
 
+    host_root = _config.get_host_root(cfg)
     _index.build_index(
         roles_root, index_path,
         dashboard_path=dashboard_path, project_name=project_name,
-        project_root=_project_root(roles_root),
+        project_root=_project_root(roles_root, host_root), repo_url=_config.get_repo_url(cfg),
+        host_root=host_root,
     )
     print(f"OK: refreshed {count} role(s), rebuilt the roster at {index_path}")
     return 0

@@ -8,7 +8,15 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from backhaul.foundation import filesafety, frontmatter as _frontmatter, handler_uri, header, markers, rollup
+from backhaul.foundation import (
+    filesafety,
+    frontmatter as _frontmatter,
+    handler_uri,
+    header,
+    host_paths,
+    markers,
+    rollup,
+)
 
 from .schema import OPEN_STATES, validate
 
@@ -27,7 +35,7 @@ def _relpath(target: str | Path, start: str | Path) -> str:
     return os.path.relpath(Path(target).resolve(), Path(start).resolve()).replace(os.sep, "/")
 
 
-def _row(item: dict, board_dir: Path) -> str:
+def _row(item: dict, board_dir: Path, *, runtime_root: Path, host_root: str | None) -> str:
     ticket = validate(item)
     path = item.get("_path")
     if isinstance(path, Path):
@@ -39,8 +47,10 @@ def _row(item: dict, board_dir: Path) -> str:
         # tickets_root, which config.local.json guarantees is absolute on the real machine),
         # and .resolve() re-derives the path against whatever filesystem this code is
         # actually running on — wrong when that's a dev sandbox with content mounted at a
-        # different location than the target machine's real path.
-        edit = f"[Edit]({handler_uri.build_uri(_EDIT_SCHEME, path)})"
+        # different location than the target machine's real path. host_root (see
+        # foundation/host_paths.py), when configured, re-roots it onto the real path instead.
+        host_path = host_paths.to_host_path(path, runtime_root=runtime_root, host_root=host_root)
+        edit = f"[Edit]({handler_uri.build_uri(_EDIT_SCHEME, host_path)})"
     else:
         id_cell = ticket.id
         edit = ""
@@ -48,12 +58,14 @@ def _row(item: dict, board_dir: Path) -> str:
     return f"| {id_cell} | {ticket.client} | {ticket.priority} | {ticket.title} | {context} | {edit} |"
 
 
-def _render_table(items: list[dict], board_dir: Path) -> str:
+def _render_table(
+    items: list[dict], board_dir: Path, *, runtime_root: Path, host_root: str | None
+) -> str:
     if not items:
         return "_No tickets in this state._\n"
     header = "| " + " | ".join(_COLUMNS) + " |"
     sep = "|" + "|".join(["---"] * len(_COLUMNS)) + "|"
-    rows = [_row(item, board_dir) for item in items]
+    rows = [_row(item, board_dir, runtime_root=runtime_root, host_root=host_root) for item in items]
     return "\n".join([header, sep, *rows]) + "\n"
 
 
@@ -63,6 +75,7 @@ def render_board(
     *,
     dashboard_path: str | Path | None = None,
     project_name: str = "Backhaul",
+    host_root: str | None = None,
 ) -> str:
     """Collect open tickets under tickets_root and render the board's markdown body.
 
@@ -75,9 +88,13 @@ def render_board(
     `dashboard_path`, if given, gets the board its own normalized bh-header — a Dashboard
     link back up, same block every ticket in the board already carries (see refresh_board_link)
     — so the indexer page looks like part of the same system, not a bare table.
+
+    `host_root`, if given, re-roots every Edit link's absolute path onto it instead of
+    wherever tickets_root currently resolves at runtime — see foundation/host_paths.py.
     """
     tickets_root = Path(tickets_root)
     board_dir = Path(board_dir) if board_dir is not None else tickets_root
+    runtime_root = tickets_root.parent.parent
 
     spec = rollup.CollectSpec(
         root=tickets_root,
@@ -97,7 +114,7 @@ def render_board(
         items = grouped.get(status, []) if isinstance(grouped, dict) else []
         sections.append(f"## {status}")
         sections.append("")
-        sections.append(_render_table(items, board_dir))
+        sections.append(_render_table(items, board_dir, runtime_root=runtime_root, host_root=host_root))
     return "\n".join(sections)
 
 
@@ -107,6 +124,7 @@ def build_board(
     *,
     dashboard_path: str | Path | None = None,
     project_name: str = "Backhaul",
+    host_root: str | None = None,
 ) -> None:
     """Collect all tickets under tickets_root and write the rendered board to output_path.
 
@@ -118,7 +136,7 @@ def build_board(
     output_path = Path(output_path)
     content = render_board(
         tickets_root, board_dir=output_path.parent,
-        dashboard_path=dashboard_path, project_name=project_name,
+        dashboard_path=dashboard_path, project_name=project_name, host_root=host_root,
     )
     filesafety.safe_write(output_path, content, overwrite=True)
 

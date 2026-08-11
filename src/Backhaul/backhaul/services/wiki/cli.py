@@ -69,7 +69,10 @@ def _cmd_new(args: argparse.Namespace) -> int:
     dashboard_path = _dashboard_path(wiki_root)
     project_name = _config.get_project_name(cfg)
     _index.refresh_header(path, index_path, dashboard_path=dashboard_path, project_name=project_name)
-    _index.build_index(wiki_root, index_path, dashboard_path=dashboard_path, project_name=project_name)
+    _index.build_index(
+        wiki_root, index_path,
+        dashboard_path=dashboard_path, project_name=project_name, host_root=_config.get_host_root(cfg),
+    )
     print(f"OK: created {path.relative_to(wiki_root)}")
     return 0
 
@@ -81,6 +84,7 @@ def _cmd_index(args: argparse.Namespace) -> int:
     kwargs: dict = {
         "dashboard_path": _dashboard_path(wiki_root),
         "project_name": _config.get_project_name(cfg),
+        "host_root": _config.get_host_root(cfg),
     }
     if args.category:
         kwargs["category_prefix"] = args.category
@@ -118,7 +122,10 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
         )
         count += 1
 
-    _index.build_index(wiki_root, index_path, dashboard_path=dashboard_path, project_name=project_name)
+    _index.build_index(
+        wiki_root, index_path,
+        dashboard_path=dashboard_path, project_name=project_name, host_root=_config.get_host_root(cfg),
+    )
     print(f"OK: refreshed {count} page(s), rebuilt the index at {index_path}")
     return 0
 
@@ -150,7 +157,10 @@ def _cmd_seed_meta(args: argparse.Namespace) -> int:
             dashboard_path=dashboard_path, project_name=project_name,
         )
     if result["created"]:
-        _index.build_index(wiki_root, index_path, dashboard_path=dashboard_path, project_name=project_name)
+        _index.build_index(
+            wiki_root, index_path,
+            dashboard_path=dashboard_path, project_name=project_name, host_root=_config.get_host_root(cfg),
+        )
 
     if result["created"]:
         print(f"OK: installed {', '.join(result['created'])}")

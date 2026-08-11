@@ -9,5 +9,6 @@
   "enabled_modules": ["roadmap"],
   "client_folders": {
     "BH": "C:\\_local\\source\\Backhaul"
-  }
+  },
+  "host_root": "C:\\_local\\source\\Backhaul"
 }

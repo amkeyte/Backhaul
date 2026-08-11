@@ -4,6 +4,7 @@ project data. Mirrors tests/test_roadmap_cli.py's structure for bhrm.
 
 import json
 import re
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -13,22 +14,24 @@ from backhaul.foundation.projects import ProjectsError
 from backhaul.modules.roles.cli import main
 
 
-def _write_config(tmp_path: Path, *, enabled: bool = True) -> Path:
+def _write_config(
+    tmp_path: Path, *, enabled: bool = True, repo_url: str | None = None, host_root: str | None = None
+) -> Path:
     cfg_path = tmp_path / "config.local.json"
-    cfg_path.write_text(
-        json.dumps(
-            {
-                "version": "0.1.0",
-                "content_roots": {
-                    "tickets": str(tmp_path / "content" / "tickets"),
-                    "wiki": str(tmp_path / "content" / "wiki"),
-                    "roles": str(tmp_path / "content" / "roles"),
-                },
-                "enabled_modules": ["roles"] if enabled else [],
-            }
-        ),
-        encoding="utf-8",
-    )
+    cfg: dict = {
+        "version": "0.1.0",
+        "content_roots": {
+            "tickets": str(tmp_path / "content" / "tickets"),
+            "wiki": str(tmp_path / "content" / "wiki"),
+            "roles": str(tmp_path / "content" / "roles"),
+        },
+        "enabled_modules": ["roles"] if enabled else [],
+    }
+    if repo_url:
+        cfg["repo_url"] = repo_url
+    if host_root:
+        cfg["host_root"] = host_root
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
     return cfg_path
 
 
@@ -58,6 +61,61 @@ def test_new_creates_role_and_writes_header(tmp_path: Path):
     index_path = tmp_path / "content" / "ROLES_INDEX.md"
     assert index_path.exists()
     assert "QA / Verification" in index_path.read_text(encoding="utf-8")
+
+
+def test_new_launch_link_includes_pip_install_when_repo_url_configured(tmp_path: Path):
+    cfg_path = _write_config(tmp_path, repo_url="https://github.com/amkeyte/Backhaul")
+
+    assert main([
+        "--config", str(cfg_path), "new", "--title", "QA / Verification",
+        "--slug", "qa", "--persona", "Lothar", "--purpose", "Independent verifier.",
+    ]) == 0
+
+    role_path = tmp_path / "content" / "roles" / "qa.md"
+    doc = frontmatter.parse(role_path)
+    doc.body = doc.body.replace(
+        "(Write the actual bootstrap prompt here: what the role is, what persona it plays if any, what\n"
+        "to read before doing anything else — orient, instruments, where the work currently stands —\n"
+        "then \"hold your lane\" boundaries, then instructions to summarize back and wait for input\n"
+        "rather than starting work immediately.)",
+        "You are QA.",
+    )
+    frontmatter.write(doc)
+    assert main(["--config", str(cfg_path), "refresh"]) == 0
+
+    index_path = tmp_path / "content" / "ROLES_INDEX.md"
+    decoded = urllib.parse.unquote(index_path.read_text(encoding="utf-8"))
+    assert 'pip install "git+https://github.com/amkeyte/Backhaul.git#subdirectory=src/Backhaul"' in decoded
+
+
+def test_new_uses_host_root_for_edit_link_and_launch_preamble(tmp_path: Path):
+    cfg_path = _write_config(tmp_path, host_root=r"C:\_local\mcRepos")
+
+    assert main([
+        "--config", str(cfg_path), "new", "--title", "QA / Verification", "--slug", "qa",
+    ]) == 0
+
+    role_path = tmp_path / "content" / "roles" / "qa.md"
+    doc = frontmatter.parse(role_path)
+    doc.body = doc.body.replace(
+        "(Write the actual bootstrap prompt here: what the role is, what persona it plays if any, what\n"
+        "to read before doing anything else — orient, instruments, where the work currently stands —\n"
+        "then \"hold your lane\" boundaries, then instructions to summarize back and wait for input\n"
+        "rather than starting work immediately.)",
+        "You are QA.",
+    )
+    frontmatter.write(doc)
+    assert main(["--config", str(cfg_path), "refresh"]) == 0
+
+    index_path = tmp_path / "content" / "ROLES_INDEX.md"
+    content = index_path.read_text(encoding="utf-8")
+    decoded = urllib.parse.unquote(content)
+
+    # Edit link is re-rooted onto host_root, not the tmp_path runtime location.
+    assert "editmd:///C:/_local/mcRepos/content/roles/qa.md" in content
+    assert str(tmp_path) not in content
+    # The Launch link's project-folder preamble names host_root directly, not the runtime path.
+    assert "This role's project folder is C:\\_local\\mcRepos" in decoded
 
 
 def test_index_command_writes_roster(tmp_path: Path):

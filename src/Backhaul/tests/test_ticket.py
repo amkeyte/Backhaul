@@ -81,6 +81,27 @@ def test_resolve_client_folder_uses_configured_entry(tmp_path: Path):
     assert registry.resolve_client_folder(cfg, "UW", tickets_root) == tmp_path / "Projects" / "UW"
 
 
+def test_resolve_client_folder_translates_fallback_when_host_root_given(tmp_path: Path):
+    # Runtime layout follows the real backhaul/ convention: content_roots.tickets is
+    # <project>/backhaul/tickets. The fallback itself (tickets_root.parent, i.e. the
+    # "backhaul" data folder — unchanged, pre-existing behavior) still gets translated onto
+    # host_root, same as it would have been printed untranslated.
+    tickets_root = tmp_path / "mcRepos" / "backhaul" / "tickets"
+    tickets_root.mkdir(parents=True)
+    cfg = {"client_folders": {}}
+    result = registry.resolve_client_folder(cfg, "ARR", tickets_root, host_root=r"C:\_local\mcRepos")
+    assert str(result) == r"C:\_local\mcRepos\backhaul"
+
+
+def test_resolve_client_folder_leaves_explicit_entry_untouched_with_host_root(tmp_path: Path):
+    tickets_root = tmp_path / "mcRepos" / "backhaul" / "tickets"
+    tickets_root.mkdir(parents=True)
+    # An explicit client_folders entry is already a real host path — host_root must not touch it.
+    cfg = {"client_folders": {"UW": r"C:\Projects\UW"}}
+    result = registry.resolve_client_folder(cfg, "UW", tickets_root, host_root=r"C:\_local\mcRepos")
+    assert str(result) == r"C:\Projects\UW"
+
+
 # --- create_ticket -------------------------------------------------------------------------
 
 
@@ -186,6 +207,24 @@ def test_build_board_groups_by_status_and_excludes_done(tmp_path: Path):
     assert "## open" in content
     assert f"tickets/{open_path.name}" in content  # ID link is relative to the board's dir
     assert f"editmd:///{open_path.as_posix()}" in content  # Edit link opens in Notepad++
+
+
+def test_build_board_edit_link_uses_host_root_when_given(tmp_path: Path):
+    # Real backhaul/ convention: content_roots.tickets is <project>/backhaul/tickets, so the
+    # project root board.py derives is tickets_root.parent.parent.
+    tickets_root = tmp_path / "mcRepos" / "backhaul" / "tickets"
+    reg_path = tickets_root / "client-uids.md"
+    open_path = create.create_ticket(
+        tickets_root=tickets_root, registry_path=reg_path, client="General", title="Open one"
+    )
+
+    board_path = tmp_path / "mcRepos" / "backhaul" / "BOARD.md"
+    board.build_board(tickets_root, board_path, host_root=r"C:\_local\mcRepos")
+    content = board_path.read_text(encoding="utf-8")
+
+    expected_rel = f"backhaul/tickets/{open_path.name}"
+    assert f"editmd:///C:/_local/mcRepos/{expected_rel}" in content
+    assert str(tmp_path) not in content  # sanity: the runtime (tmp) path never leaked into the link
 
 
 def test_build_board_overwrites_existing(tmp_path: Path):

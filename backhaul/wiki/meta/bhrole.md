@@ -51,6 +51,30 @@ to attach it before reading anything.") so the role still knows what to ask for,
 fighting that reset. If Claude Desktop's handling of `q`+`folder` together changes, this is the
 place to revisit auto-attaching.
 
+**Getting the CLI into a fresh session.** A launched Cowork session is a bare sandbox with only
+the project folder attached — not Backhaul's own source, and nothing pip-installed. Without
+something to fix that, the role can't run `bht`/`bhw`/`bhrm`/`bhrole` at all. Set `repo_url` in
+that project's `config.local.json` (this checkout's own git remote, e.g.
+`"https://github.com/amkeyte/Backhaul"`) and every Launch link gets a `pip install
+"git+<repo_url>.git#subdirectory=src/Backhaul" --break-system-packages` line prepended to the
+prompt, ahead of the project-folder line — the role installs its own CLI as step one, then asks
+for folder access, then does whatever its own bootstrap prompt says. This re-installs from
+`origin/master` every session (a fresh sandbox has nothing cached), so it only sees changes
+that have actually been committed and pushed — a local, unpushed edit to `bhrole` itself won't
+show up in a newly launched session until it's pushed. Omit `repo_url` to leave the install
+line out of Launch links entirely.
+
+**Where the project-folder line's path comes from.** That "This role's project folder is
+`<path>`" line is computed from `content_roots` at runtime by default — correct when `bhrole`
+runs on the real machine, wrong when it runs inside a role's own Cowork sandbox (a Linux VM
+mounting the project under a different path than its real one). Same root cause as the Edit
+link on `ROLES_INDEX.md`: both bake in wherever the CLI happened to execute unless told
+otherwise. Set `host_root` in `config.local.json` (the project's real root, e.g.
+`"C:\\_local\\mcRepos"`) and both get corrected — the project-folder line names `host_root`
+directly, and every Edit link is re-rooted onto it. See the README's "Running from somewhere
+other than the real machine" section for the general mechanism (it applies to `bht`/`bhw` too,
+not just roles).
+
 ## Frontmatter fields
 
 `slug`, `title` (required); `persona`, `purpose`, `authority`, `reports_to`, `status`

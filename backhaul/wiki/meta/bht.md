@@ -57,7 +57,12 @@ bht projects                # list config/projects.json entries
 `--project <name>` (or `--config <path>`) selects which project's tickets/board this touches;
 omit both for this checkout's own default config.
 
+If `bht` might ever run somewhere other than the real machine (e.g. inside a role's Cowork
+sandbox — see `bhrole`'s meta page), set `host_root` in `config.local.json` so Edit/Folder links
+still point at the real path instead of wherever the CLI happens to be executing.
+
 ## Related pages
 
 - [BHW — Wiki Conventions](../meta/bhw.md)
 - [BHRM — Roadmap Conventions](../meta/bhrm.md)
+- [BHRole — Roles Conventions](../meta/bhrole.md)

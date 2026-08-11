@@ -158,6 +158,14 @@ before it could be sent. `bhrole` instead folds the project root into the prompt
 ("This role's project folder is `<path>` — ask me to attach it before reading anything."), so
 the role still knows what to request without fighting that reset.
 
+A launched session is also a bare sandbox — no Backhaul source, nothing pip-installed. Set
+`repo_url` in that project's `config.local.json` to this checkout's own git remote (e.g.
+`"https://github.com/amkeyte/Backhaul"`) and every Launch link gets a `pip install
+"git+<repo_url>.git#subdirectory=src/Backhaul" --break-system-packages` line prepended too, so
+the role installs its own CLI before asking for folder access. That reinstalls from
+`origin/master` every session, so it only ever sees what's actually been pushed — commit and
+push before expecting a freshly launched session to have the latest `bhrole`.
+
 ```
 bhrole --project lunaflow new --title "QA" --slug qa --persona "Lothar" --purpose "..." --authority "..."
 bhrole --project lunaflow index
@@ -167,6 +175,26 @@ bhrole --project lunaflow refresh
 The dashboard shows a `Team` line with the count of `active` roles once both the content root
 and the module are configured. See the `bhrole` meta wiki page (below) for the full convention
 writeup.
+
+## Running from somewhere other than the real machine (host_root)
+
+Every `editmd:`/`openfolder:` Edit and Folder link, and a role's Launch-link project-folder
+line, is built from `content_roots` as configured — correct by construction when the CLI runs
+directly on the real machine (the original use case: a human in VS2022), since "where the CLI
+is reading files" and "where a human will click the link" are the same machine.
+
+A role launched into a Cowork session breaks that: it's a Linux sandbox, so it can't do file
+I/O against `content_roots` written as real Windows paths, and a translated scratch config that
+*can* do the I/O then bakes sandbox-mounted paths into every generated link instead of ones a
+human can actually open.
+
+Set `host_root` in `config.local.json` to this project's real root path (e.g.
+`"C:\\_local\\mcRepos"`) to fix this structurally: every Edit/Folder/Launch-preamble path gets
+re-rooted onto `host_root` — computed as its offset from the project root, rejoined onto
+`host_root` — instead of wherever `content_roots` currently resolves at runtime. An explicit
+`client_folders` entry is never touched (it's already expected to be a real path); only paths
+derived from `content_roots` are. Omit `host_root` to keep today's default: links are built
+straight from `content_roots` as printed, same as always.
 
 ## Dogfooding: Backhaul tracks itself
 
