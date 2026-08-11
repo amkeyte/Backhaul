@@ -50,12 +50,36 @@ def _cmd_dashboard(args: argparse.Namespace) -> int:
         # sits one level further up, at that folder's parent — the project's true root.
         output_path = tickets_root.parent.parent / "BACKHAUL.md"
 
+    # Roadmap and Roles are both optional — only wire either into the dashboard when this
+    # project has both configured a content root for it *and* enabled the module. A project
+    # that's never touched bhrm/bhrole shouldn't get a dead "0 graphs"/"0 roles" link on its
+    # front page.
+    enabled_modules = _config.get_enabled_modules(cfg)
+    content_roots = cfg.get("content_roots", {})
+
+    roadmap_root = None
+    roadmap_index_path = None
+    if "roadmap" in content_roots and "roadmap" in enabled_modules:
+        roadmap_root = Path(content_roots["roadmap"])
+        roadmap_index_path = roadmap_root.parent / "ROADMAP_INDEX.md"
+
+    roles_root = None
+    roles_index_path = None
+    if "roles" in content_roots and "roles" in enabled_modules:
+        roles_root = Path(content_roots["roles"])
+        roles_index_path = roles_root.parent / "ROLES_INDEX.md"
+
     _dashboard.build_dashboard(
         tickets_root=tickets_root,
         wiki_root=wiki_root,
         board_path=board_path,
         index_path=index_path,
         output_path=output_path,
+        roadmap_root=roadmap_root,
+        roadmap_index_path=roadmap_index_path,
+        roles_root=roles_root,
+        roles_index_path=roles_index_path,
+        project_name=_config.get_project_name(cfg),
     )
     print(f"OK: wrote dashboard to {output_path}")
     return 0

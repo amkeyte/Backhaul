@@ -136,6 +136,28 @@ def test_create_ticket_respects_explicit_uid(tmp_path: Path):
     assert registry.find_uid(reg_path, "Precision Electric") == "PREC"
 
 
+def test_create_ticket_slug_override(tmp_path: Path):
+    tickets_root = tmp_path / "tickets"
+    reg_path = tmp_path / "client-uids.md"
+
+    path = create.create_ticket(
+        tickets_root=tickets_root, registry_path=reg_path, client="Arryn",
+        title="A much longer descriptive title than the code needs", slug="alma",
+    )
+    assert path.name == "ARR_001_alma.md"
+
+
+def test_create_ticket_slug_is_sanitized(tmp_path: Path):
+    tickets_root = tmp_path / "tickets"
+    reg_path = tmp_path / "client-uids.md"
+
+    path = create.create_ticket(
+        tickets_root=tickets_root, registry_path=reg_path, client="Arryn",
+        title="Whatever", slug="Not A Clean Slug!!",
+    )
+    assert path.name == "ARR_001_not-a-clean-slug.md"
+
+
 # --- board -----------------------------------------------------------------------------
 
 
@@ -177,6 +199,30 @@ def test_build_board_overwrites_existing(tmp_path: Path):
 
     board.build_board(tickets_root, board_path)  # should not raise UnsafeWriteError
     assert board_path.read_text(encoding="utf-8") == first_render
+
+
+def test_build_board_omits_header_without_dashboard_path(tmp_path: Path):
+    tickets_root = tmp_path / "tickets"
+    reg_path = tmp_path / "client-uids.md"
+    create.create_ticket(tickets_root=tickets_root, registry_path=reg_path, client="General", title="One")
+
+    board_path = tmp_path / "BOARD.md"
+    board.build_board(tickets_root, board_path)
+    assert "bh-header" not in board_path.read_text(encoding="utf-8")
+
+
+def test_build_board_includes_header_with_dashboard_path(tmp_path: Path):
+    tickets_root = tmp_path / "tickets"
+    reg_path = tmp_path / "client-uids.md"
+    create.create_ticket(tickets_root=tickets_root, registry_path=reg_path, client="General", title="One")
+
+    board_path = tmp_path / "BOARD.md"
+    dashboard_path = tmp_path / "BACKHAUL.md"
+    board.build_board(tickets_root, board_path, dashboard_path=dashboard_path, project_name="Fronthaul")
+
+    content = board_path.read_text(encoding="utf-8")
+    assert content.startswith("<!-- bh-header:start -->")
+    assert "**Fronthaul** — [Dashboard](BACKHAUL.md)" in content
 
 
 def test_refresh_board_link_is_idempotent(tmp_path: Path):

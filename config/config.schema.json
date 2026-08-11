@@ -7,14 +7,20 @@
   "properties": {
     "version": {
       "type": "string",
-      "description": "Backhaul repo version this config was last synced against (see VERSION file)."
+      "description": "This config file's schema version — must exactly match foundation/config.py's CONFIG_SCHEMA_VERSION for this checkout (currently \"0.1.0\"), or load_config() refuses to load it. Bumped only on a breaking config shape change (required key added/renamed/removed), not on every package release — adding a new optional key like content_roots.roadmap does not require bumping this."
+    },
+    "project_name": {
+      "type": "string",
+      "description": "Display name shown in every piece of Backhaul content's normalized header (e.g. \"mcRepos\", \"LunaFlow_A\"). Optional — falls back to content_roots.tickets's grandparent folder name when omitted."
     },
     "content_roots": {
       "type": "object",
       "description": "Paths to this machine's actual ticket/wiki content, outside the repo.",
       "properties": {
         "tickets": { "type": "string" },
-        "wiki": { "type": "string" }
+        "wiki": { "type": "string" },
+        "roadmap": { "type": "string", "description": "Optional — only needed if \"roadmap\" is in enabled_modules. One folder per project; individual graphs are scoped within it by client UID prefix (RM_<uid>_NNN.md), not by subfolder." },
+        "roles": { "type": "string", "description": "Optional — only needed if \"roles\" is in enabled_modules. One folder per project holding that project's agent-role pages (see modules/roles)." }
       },
       "required": ["tickets", "wiki"]
     },

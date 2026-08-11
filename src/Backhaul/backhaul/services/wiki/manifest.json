@@ -1,8 +1,9 @@
 {
   "id": "wiki",
+  "version": "0.1.0",
   "short_code": "BHW",
   "kind": "service",
-  "description": "Category-based wiki: new_page, breadcrumbs, index build.",
+  "description": "Category-based wiki: new_page, normalized header, index build.",
   "requires": ["foundation"],
   "always_enabled": true
 }

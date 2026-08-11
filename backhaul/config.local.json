@@ -1,0 +1,13 @@
+{
+  "version": "0.1.0",
+  "project_name": "Backhaul",
+  "content_roots": {
+    "tickets": "C:\\_local\\source\\Backhaul\\backhaul\\tickets",
+    "wiki": "C:\\_local\\source\\Backhaul\\backhaul\\wiki",
+    "roadmap": "C:\\_local\\source\\Backhaul\\backhaul\\roadmap"
+  },
+  "enabled_modules": ["roadmap"],
+  "client_folders": {
+    "BH": "C:\\_local\\source\\Backhaul"
+  }
+}

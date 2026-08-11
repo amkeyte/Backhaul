@@ -1,5 +1,6 @@
 {
   "id": "ticket",
+  "version": "0.1.0",
   "short_code": "BHT",
   "kind": "service",
   "description": "Passdown ticket system: new_ticket, close, board rollup.",

@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from backhaul.foundation import filesafety, frontmatter as _frontmatter, handler_uri, markers, rollup
+from backhaul.foundation import filesafety, frontmatter as _frontmatter, handler_uri, header, markers, rollup
 
 from .schema import validate
 
@@ -63,6 +63,8 @@ def render_index(
     *,
     category_prefix: str | None = None,
     title: str = "# Wiki Index",
+    dashboard_path: str | Path | None = None,
+    project_name: str = "Backhaul",
 ) -> str:
     """Collect wiki pages under wiki_root and render the index's markdown body.
 
@@ -75,6 +77,11 @@ def render_index(
     (e.g. "frontiermode" matches "frontiermode" and "frontiermode/anything") — for a landing
     page covering one subproject's wiki content rather than the whole project's. `title` lets
     the top heading be overridden (e.g. down to "## Wiki" when nesting inside a larger page).
+
+    `dashboard_path`, if given, gets the index its own normalized bh-header — a Dashboard link
+    back up, same block every page in the index already carries (see refresh_header) — left
+    optional (default None, no header) since render_index is also used to build nested/scoped
+    landing pages that aren't standalone top-level pages.
     """
     wiki_root = Path(wiki_root)
     index_dir = Path(index_dir) if index_dir is not None else wiki_root
@@ -87,7 +94,12 @@ def render_index(
     )
     grouped = rollup.collect(spec)
 
-    sections = [title, ""]
+    sections: list[str] = []
+    if dashboard_path is not None:
+        dashboard_rel = _relpath(dashboard_path, index_dir)
+        block = header.render_header(project_name=project_name, dashboard_rel=dashboard_rel)
+        sections += [f"<!-- {header.MARKER_NAME}:start -->", block, f"<!-- {header.MARKER_NAME}:end -->", ""]
+    sections += [title, ""]
     if not grouped:
         sections.append("_No pages yet._")
         return "\n".join(sections) + "\n"
@@ -107,6 +119,8 @@ def build_index(
     *,
     category_prefix: str | None = None,
     title: str = "# Wiki Index",
+    dashboard_path: str | Path | None = None,
+    project_name: str = "Backhaul",
 ) -> None:
     """Collect wiki pages under wiki_root and write the rendered category index.
 
@@ -114,27 +128,41 @@ def build_index(
     """
     output_path = Path(output_path)
     content = render_index(
-        wiki_root, index_dir=output_path.parent, category_prefix=category_prefix, title=title
+        wiki_root, index_dir=output_path.parent, category_prefix=category_prefix, title=title,
+        dashboard_path=dashboard_path, project_name=project_name,
     )
     filesafety.safe_write(output_path, content, overwrite=True)
 
 
-def refresh_breadcrumb(page_path: str | Path, index_path: str | Path | None = None) -> None:
-    """Insert/refresh the breadcrumb nav block in a single wiki page's header.
+def refresh_header(
+    page_path: str | Path,
+    index_path: str | Path | None = None,
+    *,
+    dashboard_path: str | Path | None = None,
+    project_name: str = "Backhaul",
+) -> None:
+    """Insert/refresh the normalized Backhaul header in a single wiki page: project name,
+    Dashboard link, Wiki Index link, category breadcrumb trail — see foundation/header.py.
 
-    Renders as "[Index](<relative link>) / category / subcategory" — only the Index segment
-    is a link (there's no per-category index page in this version, just the one master
-    index); the category segments are plain text breadcrumbs.
+    The category segments (e.g. "frontiermode / anything") are appended as plain text after
+    the Index link, same as the old breadcrumb behavior — there's no per-category index page
+    in this version, just the one master index. `dashboard_path` defaults to "BACKHAUL.md"
+    (relative) if not given, mirroring services/ticket/board.py's refresh_board_link.
     """
     path = Path(page_path)
     doc = _frontmatter.parse(path)
     category = str(doc.frontmatter.get("category") or "")
 
     index_rel = _relpath(index_path, path.parent) if index_path is not None else "WIKI_INDEX.md"
+    dashboard_rel = _relpath(dashboard_path, path.parent) if dashboard_path is not None else "BACKHAUL.md"
     segments = [seg for seg in category.split("/") if seg]
-    crumb = f"[Index]({index_rel})"
-    if segments:
-        crumb += " / " + " / ".join(segments)
 
-    doc.body = markers.refresh_block(doc.body, "breadcrumb", crumb)
+    block = header.render_header(
+        project_name=project_name,
+        dashboard_rel=dashboard_rel,
+        indexer_label="Wiki Index",
+        indexer_rel=index_rel,
+        extra=" / ".join(segments) if segments else "",
+    )
+    doc.body = markers.refresh_block(doc.body, header.MARKER_NAME, block)
     _frontmatter.write(doc)

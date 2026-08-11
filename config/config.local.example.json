@@ -1,5 +1,6 @@
 {
   "version": "0.1.0",
+  "project_name": "THIS PROJECT'S DISPLAY NAME",
   "content_roots": {
     "tickets": "PATH/TO/THIS/PROJECT/backhaul/tickets",
     "wiki": "PATH/TO/THIS/PROJECT/backhaul/wiki"

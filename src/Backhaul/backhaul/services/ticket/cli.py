@@ -52,6 +52,13 @@ def _board_path(tickets_root: Path) -> Path:
     return tickets_root.parent / "BOARD.md"
 
 
+def _dashboard_path(tickets_root: Path) -> Path:
+    # tickets_root.parent is the "backhaul/" data folder; the dashboard sits one level above
+    # that, at the project's true root — same convention backhaul/cli.py's own dashboard
+    # command uses.
+    return tickets_root.parent.parent / "BACKHAUL.md"
+
+
 def _cmd_open(args: argparse.Namespace) -> int:
     cfg = _config.load_config(_resolve_config_path(args))
     tickets_root = _tickets_root(cfg)
@@ -61,22 +68,29 @@ def _cmd_open(args: argparse.Namespace) -> int:
         client=args.client,
         title=args.title,
         uid=args.uid,
+        slug=args.slug,
         context=args.context,
         priority=args.priority,
     )
 
     uid = _frontmatter.parse(path).frontmatter["uid"]
     folder = _registry.resolve_client_folder(cfg, uid, tickets_root)
+    dashboard_path = _dashboard_path(tickets_root)
+    project_name = _config.get_project_name(cfg)
 
     board_path = _board_path(tickets_root)
-    _board.refresh_board_link(path, board_path, folder_path=folder)
-    _board.build_board(tickets_root, board_path)
+    _board.refresh_board_link(
+        path, board_path, folder_path=folder,
+        dashboard_path=dashboard_path, project_name=project_name,
+    )
+    _board.build_board(tickets_root, board_path, dashboard_path=dashboard_path, project_name=project_name)
     print(f"OK: opened {path.name}")
     return 0
 
 
 def _cmd_close(args: argparse.Namespace) -> int:
-    tickets_root = _tickets_root(_config.load_config(_resolve_config_path(args)))
+    cfg = _config.load_config(_resolve_config_path(args))
+    tickets_root = _tickets_root(cfg)
     matches = [p for p in tickets_root.glob(f"{args.id}*.md") if p.name != "BOARD.md"]
     if not matches:
         print(f"FAIL: no ticket matching '{args.id}' under {tickets_root}")
@@ -97,15 +111,22 @@ def _cmd_close(args: argparse.Namespace) -> int:
     doc.frontmatter["closed"] = date.today().isoformat()
     _frontmatter.write(doc)
 
-    _board.build_board(tickets_root, _board_path(tickets_root))
+    _board.build_board(
+        tickets_root, _board_path(tickets_root),
+        dashboard_path=_dashboard_path(tickets_root), project_name=_config.get_project_name(cfg),
+    )
     print(f"OK: closed {path.name}")
     return 0
 
 
 def _cmd_board(args: argparse.Namespace) -> int:
-    tickets_root = _tickets_root(_config.load_config(_resolve_config_path(args)))
+    cfg = _config.load_config(_resolve_config_path(args))
+    tickets_root = _tickets_root(cfg)
     out = Path(args.output) if args.output else _board_path(tickets_root)
-    _board.build_board(tickets_root, out)
+    _board.build_board(
+        tickets_root, out,
+        dashboard_path=_dashboard_path(tickets_root), project_name=_config.get_project_name(cfg),
+    )
     print(f"OK: wrote board to {out}")
     return 0
 
@@ -120,6 +141,8 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
     cfg = _config.load_config(_resolve_config_path(args))
     tickets_root = _tickets_root(cfg)
     board_path = _board_path(tickets_root)
+    dashboard_path = _dashboard_path(tickets_root)
+    project_name = _config.get_project_name(cfg)
     registry_name = _registry_path(tickets_root).name
 
     count = 0
@@ -134,10 +157,13 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
         if not uid:
             continue
         folder = _registry.resolve_client_folder(cfg, uid, tickets_root)
-        _board.refresh_board_link(ticket_path, board_path, folder_path=folder)
+        _board.refresh_board_link(
+            ticket_path, board_path, folder_path=folder,
+            dashboard_path=dashboard_path, project_name=project_name,
+        )
         count += 1
 
-    _board.build_board(tickets_root, board_path)
+    _board.build_board(tickets_root, board_path, dashboard_path=dashboard_path, project_name=project_name)
     print(f"OK: refreshed {count} ticket(s), rebuilt the board at {board_path}")
     return 0
 
@@ -163,6 +189,7 @@ def main(argv: list[str] | None = None) -> int:
     p_open.add_argument("--client", required=True)
     p_open.add_argument("--title", required=True)
     p_open.add_argument("--uid", default=None, help="Client UID. Auto-resolved/minted from --client if omitted.")
+    p_open.add_argument("--slug", default=None, help="Short filename code (e.g. \"alma\"). Defaults to a slugified --title.")
     p_open.add_argument("--context", default=None)
     p_open.add_argument("--priority", default="normal")
     p_open.set_defaults(func=_cmd_open)

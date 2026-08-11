@@ -61,18 +61,28 @@ def test_new_and_index(tmp_path: Path):
 
     doc = frontmatter.parse(page_path)
     assert doc.frontmatter["status"] == "draft"
-    assert "[Index]" in doc.body
+    assert "[Wiki Index]" in doc.body
 
 
-def test_refresh_recomputes_breadcrumbs(tmp_path: Path):
+def test_index_includes_header_linking_back_to_dashboard(tmp_path: Path):
+    cfg_path = _write_config(tmp_path)
+    main(["--config", str(cfg_path), "new", "--category", "meta", "--title", "About"])
+
+    index_path = tmp_path / "content" / "WIKI_INDEX.md"
+    content = index_path.read_text(encoding="utf-8")
+    assert content.startswith("<!-- bh-header:start -->")
+    assert "[Dashboard](../BACKHAUL.md)" in content
+
+
+def test_refresh_recomputes_headers(tmp_path: Path):
     cfg_path = _write_config(tmp_path)
     main(["--config", str(cfg_path), "new", "--category", "meta", "--title", "About"])
 
     page_path = tmp_path / "content" / "wiki" / "meta" / "about.md"
     doc = frontmatter.parse(page_path)
     doc.body = re.sub(
-        r"<!-- breadcrumb:start -->.*?<!-- breadcrumb:end -->",
-        "<!-- breadcrumb:start -->\n[Index](stale/path.md)\n<!-- breadcrumb:end -->",
+        r"<!-- bh-header:start -->.*?<!-- bh-header:end -->",
+        "<!-- bh-header:start -->\n[Wiki Index](stale/path.md)\n<!-- bh-header:end -->",
         doc.body,
         flags=re.DOTALL,
     )
@@ -83,7 +93,7 @@ def test_refresh_recomputes_breadcrumbs(tmp_path: Path):
 
     content = page_path.read_text(encoding="utf-8")
     assert "stale/path.md" not in content
-    assert "[Index](../../WIKI_INDEX.md) / meta" in content
+    assert "[Wiki Index](../../WIKI_INDEX.md) · meta" in content
 
 
 def test_index_category_flag_scopes_output(tmp_path: Path):
@@ -110,9 +120,53 @@ def test_index_category_flag_scopes_output(tmp_path: Path):
     )
 
     content = out_path.read_text(encoding="utf-8")
-    assert content.startswith("# FrontierMode Wiki")
+    assert content.startswith("<!-- bh-header:start -->")
+    assert "# FrontierMode Wiki" in content
     assert "FM Overview" in content
     assert "Satchel Overview" not in content
+
+
+def test_seed_meta_installs_from_source_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    (tmp_path / "source").mkdir()
+    (tmp_path / "dest").mkdir()
+    source_cfg = _write_config(tmp_path / "source")
+    dest_cfg = _write_config(tmp_path / "dest")
+
+    registry_path = tmp_path / "projects.json"
+    registry_path.write_text(json.dumps({"backhaul": str(source_cfg)}), encoding="utf-8")
+
+    import backhaul.services.wiki.cli as cli_module
+
+    monkeypatch.setattr(cli_module, "_PROJECTS_PATH", registry_path)
+
+    # Seed the canonical source project's own meta pages first.
+    main(["--config", str(source_cfg), "new", "--category", "meta", "--title", "BHT — Ticket Conventions", "--slug", "bht"])
+
+    assert main(["--config", str(dest_cfg), "seed-meta"]) == 0
+
+    dest_page = tmp_path / "dest" / "content" / "wiki" / "meta" / "bht.md"
+    assert dest_page.exists()
+
+    index_content = (tmp_path / "dest" / "content" / "WIKI_INDEX.md").read_text(encoding="utf-8")
+    assert "BHT" in index_content
+
+
+def test_seed_meta_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    (tmp_path / "source").mkdir()
+    (tmp_path / "dest").mkdir()
+    source_cfg = _write_config(tmp_path / "source")
+    dest_cfg = _write_config(tmp_path / "dest")
+
+    registry_path = tmp_path / "projects.json"
+    registry_path.write_text(json.dumps({"backhaul": str(source_cfg)}), encoding="utf-8")
+
+    import backhaul.services.wiki.cli as cli_module
+
+    monkeypatch.setattr(cli_module, "_PROJECTS_PATH", registry_path)
+
+    main(["--config", str(source_cfg), "new", "--category", "meta", "--title", "BHT", "--slug", "bht"])
+    assert main(["--config", str(dest_cfg), "seed-meta"]) == 0
+    assert main(["--config", str(dest_cfg), "seed-meta"]) == 0  # should not raise or duplicate
 
 
 # --- --project flag (config/projects.json) ------------------------------------------------

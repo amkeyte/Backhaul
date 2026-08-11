@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from backhaul.foundation import filesafety, frontmatter as _frontmatter, handler_uri, markers, rollup
+from backhaul.foundation import filesafety, frontmatter as _frontmatter, handler_uri, header, markers, rollup
 
 from .schema import OPEN_STATES, validate
 
@@ -57,7 +57,13 @@ def _render_table(items: list[dict], board_dir: Path) -> str:
     return "\n".join([header, sep, *rows]) + "\n"
 
 
-def render_board(tickets_root: str | Path, board_dir: str | Path | None = None) -> str:
+def render_board(
+    tickets_root: str | Path,
+    board_dir: str | Path | None = None,
+    *,
+    dashboard_path: str | Path | None = None,
+    project_name: str = "Backhaul",
+) -> str:
     """Collect open tickets under tickets_root and render the board's markdown body.
 
     Only OPEN_STATES tickets are collected at all (`done` tickets are excluded from the
@@ -65,6 +71,10 @@ def render_board(tickets_root: str | Path, board_dir: str | Path | None = None) 
     table per state. `board_dir` is the directory the rendered board will actually live in
     (defaults to tickets_root itself) — Edit links are computed relative to it, so the board
     can live alongside tickets_root or a directory up from it without broken links.
+
+    `dashboard_path`, if given, gets the board its own normalized bh-header — a Dashboard
+    link back up, same block every ticket in the board already carries (see refresh_board_link)
+    — so the indexer page looks like part of the same system, not a bare table.
     """
     tickets_root = Path(tickets_root)
     board_dir = Path(board_dir) if board_dir is not None else tickets_root
@@ -77,7 +87,12 @@ def render_board(tickets_root: str | Path, board_dir: str | Path | None = None) 
     )
     grouped = rollup.collect(spec)
 
-    sections = ["# Work Board", ""]
+    sections: list[str] = []
+    if dashboard_path is not None:
+        dashboard_rel = _relpath(dashboard_path, board_dir)
+        block = header.render_header(project_name=project_name, dashboard_rel=dashboard_rel)
+        sections += [f"<!-- {header.MARKER_NAME}:start -->", block, f"<!-- {header.MARKER_NAME}:end -->", ""]
+    sections += ["# Work Board", ""]
     for status in OPEN_STATES:
         items = grouped.get(status, []) if isinstance(grouped, dict) else []
         sections.append(f"## {status}")
@@ -86,7 +101,13 @@ def render_board(tickets_root: str | Path, board_dir: str | Path | None = None) 
     return "\n".join(sections)
 
 
-def build_board(tickets_root: str | Path, output_path: str | Path) -> None:
+def build_board(
+    tickets_root: str | Path,
+    output_path: str | Path,
+    *,
+    dashboard_path: str | Path | None = None,
+    project_name: str = "Backhaul",
+) -> None:
     """Collect all tickets under tickets_root and write the rendered board to output_path.
 
     The board is regenerated wholesale on every run — never hand-edited, per
@@ -95,7 +116,10 @@ def build_board(tickets_root: str | Path, output_path: str | Path) -> None:
     folder from burying the board); Edit links are relative to wherever it actually lands.
     """
     output_path = Path(output_path)
-    content = render_board(tickets_root, board_dir=output_path.parent)
+    content = render_board(
+        tickets_root, board_dir=output_path.parent,
+        dashboard_path=dashboard_path, project_name=project_name,
+    )
     filesafety.safe_write(output_path, content, overwrite=True)
 
 
@@ -103,24 +127,34 @@ def refresh_board_link(
     ticket_path: str | Path,
     board_path: str | Path | None = None,
     folder_path: str | Path | None = None,
+    dashboard_path: str | Path | None = None,
+    project_name: str = "Backhaul",
 ) -> None:
-    """Insert/refresh the Board + Folder link block in a single ticket file's header.
+    """Insert/refresh the normalized Backhaul header in a single ticket file: project name,
+    Dashboard link, Board link, Folder link — see foundation/header.py.
 
     `folder_path` is the folder the Folder link opens (via the openfolder: protocol handler)
     — normally the client's configured project folder (see registry.resolve_client_folder),
     not necessarily the ticket's own containing directory. Defaults to the ticket's own
-    directory if not given.
+    directory if not given. `dashboard_path` defaults to "BACKHAUL.md" (relative) if not given.
     """
     path = Path(ticket_path)
     doc = _frontmatter.parse(path)
 
     board_rel = _relpath(board_path, path.parent) if board_path is not None else "BOARD.md"
+    dashboard_rel = _relpath(dashboard_path, path.parent) if dashboard_path is not None else "BACKHAUL.md"
     # Not .resolve()'d, same reasoning as the Edit link above — folder_path is expected to
     # already be an absolute, correct path (from registry.resolve_client_folder, which reads
     # it straight out of config.local.json's client_folders when set).
     folder = Path(folder_path) if folder_path is not None else path.parent
     folder_uri = handler_uri.build_uri(_FOLDER_SCHEME, folder)
 
-    block = f"[Board]({board_rel}) | [Folder]({folder_uri})"
-    doc.body = markers.refresh_block(doc.body, "board", block)
+    block = header.render_header(
+        project_name=project_name,
+        dashboard_rel=dashboard_rel,
+        indexer_label="Board",
+        indexer_rel=board_rel,
+        extra=f"[Folder]({folder_uri})",
+    )
+    doc.body = markers.refresh_block(doc.body, header.MARKER_NAME, block)
     _frontmatter.write(doc)

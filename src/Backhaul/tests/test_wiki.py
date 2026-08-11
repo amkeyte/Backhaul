@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from backhaul.foundation import frontmatter
-from backhaul.services.wiki import create, index
+from backhaul.services.wiki import create, defaults, index
 from backhaul.services.wiki.schema import WikiValidationError, validate
 
 # --- schema ----------------------------------------------------------------------------
@@ -131,6 +131,28 @@ def test_build_index_overwrites_existing(tmp_path: Path):
     assert index_path.read_text(encoding="utf-8") == first
 
 
+def test_build_index_omits_header_without_dashboard_path(tmp_path: Path):
+    wiki_root = tmp_path / "wiki"
+    create.create_page(wiki_root=wiki_root, category="meta", title="About")
+
+    index_path = tmp_path / "WIKI_INDEX.md"
+    index.build_index(wiki_root, index_path)
+    assert "bh-header" not in index_path.read_text(encoding="utf-8")
+
+
+def test_build_index_includes_header_with_dashboard_path(tmp_path: Path):
+    wiki_root = tmp_path / "wiki"
+    create.create_page(wiki_root=wiki_root, category="meta", title="About")
+
+    index_path = tmp_path / "WIKI_INDEX.md"
+    dashboard_path = tmp_path / "BACKHAUL.md"
+    index.build_index(wiki_root, index_path, dashboard_path=dashboard_path, project_name="Fronthaul")
+
+    content = index_path.read_text(encoding="utf-8")
+    assert content.startswith("<!-- bh-header:start -->")
+    assert "**Fronthaul** — [Dashboard](BACKHAUL.md)" in content
+
+
 def test_index_edit_link_uses_editmd_scheme(tmp_path: Path):
     wiki_root = tmp_path / "wiki"
     path = create.create_page(wiki_root=wiki_root, category="meta", title="About")
@@ -207,38 +229,77 @@ def test_build_index_default_category_prefix_includes_everything(tmp_path: Path)
     assert "Satchel Overview" in content
 
 
-# --- breadcrumb --------------------------------------------------------------------------
+# --- defaults (seed_meta_wiki) ------------------------------------------------------------
 
 
-def test_refresh_breadcrumb_nested_category(tmp_path: Path):
+def test_seed_meta_wiki_copies_pages(tmp_path: Path):
+    source_wiki = tmp_path / "source_wiki"
+    create.create_page(wiki_root=source_wiki, category="meta", title="BHT — Ticket Conventions", slug="bht")
+    create.create_page(wiki_root=source_wiki, category="meta", title="BHW — Wiki Conventions", slug="bhw")
+
+    dest_wiki = tmp_path / "dest_wiki"
+    result = defaults.seed_meta_wiki(dest_wiki, source_wiki)
+
+    assert set(result["created"]) == {"bht", "bhw"}
+    assert result["skipped"] == []
+    assert (dest_wiki / "meta" / "bht.md").exists()
+    assert (dest_wiki / "meta" / "bhw.md").exists()
+
+
+def test_seed_meta_wiki_never_overwrites_existing(tmp_path: Path):
+    source_wiki = tmp_path / "source_wiki"
+    create.create_page(wiki_root=source_wiki, category="meta", title="BHT — Ticket Conventions", slug="bht")
+
+    dest_wiki = tmp_path / "dest_wiki"
+    create.create_page(wiki_root=dest_wiki, category="meta", title="My Customized BHT Notes", slug="bht")
+    original = (dest_wiki / "meta" / "bht.md").read_text(encoding="utf-8")
+
+    result = defaults.seed_meta_wiki(dest_wiki, source_wiki)
+    assert result["created"] == []
+    assert result["skipped"] == ["bht"]
+    assert (dest_wiki / "meta" / "bht.md").read_text(encoding="utf-8") == original
+
+
+def test_seed_meta_wiki_raises_on_missing_source_category(tmp_path: Path):
+    source_wiki = tmp_path / "source_wiki"
+    source_wiki.mkdir()
+    with pytest.raises(defaults.DefaultsError):
+        defaults.seed_meta_wiki(tmp_path / "dest_wiki", source_wiki)
+
+
+# --- header -------------------------------------------------------------------------------
+
+
+def test_refresh_header_nested_category(tmp_path: Path):
     wiki_root = tmp_path / "wiki"
     path = create.create_page(wiki_root=wiki_root, category="reference/conventions", title="Style Guide")
     index_path = tmp_path / "WIKI_INDEX.md"
 
-    index.refresh_breadcrumb(path, index_path)
+    index.refresh_header(path, index_path)
     content = path.read_text(encoding="utf-8")
-    assert "[Index](../../../WIKI_INDEX.md) / reference / conventions" in content
+    assert "[Dashboard](BACKHAUL.md)" in content
+    assert "[Wiki Index](../../../WIKI_INDEX.md) · reference / conventions" in content
 
 
-def test_refresh_breadcrumb_is_idempotent(tmp_path: Path):
+def test_refresh_header_is_idempotent(tmp_path: Path):
     wiki_root = tmp_path / "wiki"
     path = create.create_page(wiki_root=wiki_root, category="meta", title="About")
     index_path = tmp_path / "WIKI_INDEX.md"
 
-    index.refresh_breadcrumb(path, index_path)
+    index.refresh_header(path, index_path)
     once = path.read_text(encoding="utf-8")
-    index.refresh_breadcrumb(path, index_path)
+    index.refresh_header(path, index_path)
     twice = path.read_text(encoding="utf-8")
     assert once == twice
-    assert "[Index](../../WIKI_INDEX.md) / meta" in once
+    assert "[Wiki Index](../../WIKI_INDEX.md) · meta" in once
 
 
-def test_refresh_breadcrumb_no_category_omits_trail(tmp_path: Path):
+def test_refresh_header_no_category_omits_trail(tmp_path: Path):
     wiki_root = tmp_path / "wiki"
     path = create.create_page(wiki_root=wiki_root, category="", title="Root Page")
     index_path = tmp_path / "WIKI_INDEX.md"
 
-    index.refresh_breadcrumb(path, index_path)
+    index.refresh_header(path, index_path)
     content = path.read_text(encoding="utf-8")
-    assert "[Index](../WIKI_INDEX.md)" in content
-    assert "[Index](../WIKI_INDEX.md) /" not in content
+    assert "[Wiki Index](../WIKI_INDEX.md)" in content
+    assert "[Wiki Index](../WIKI_INDEX.md) ·" not in content

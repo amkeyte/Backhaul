@@ -39,6 +39,7 @@ def create_ticket(
     client: str,
     title: str,
     uid: str | None = None,
+    slug: str | None = None,
     context: str | None = None,
     priority: str = "normal",
     today: date | None = None,
@@ -46,8 +47,12 @@ def create_ticket(
     """Create a new ticket file under tickets_root and return its path.
 
     If uid isn't given, it's looked up in the client-uids.md registry by client name, or
-    auto-suggested and registered if this is the first ticket for that client. Refuses to
-    overwrite an existing file (foundation.filesafety.safe_write's default behavior).
+    auto-suggested and registered if this is the first ticket for that client. `slug` lets the
+    filename carry a short, easy-to-reference code (e.g. "alma") instead of the full title
+    slugified — defaults to slugify(title) when omitted. Either way the value is run through
+    slugify() (idempotent on an already-clean code), so a hand-typed slug can't smuggle spaces
+    or odd casing into the filename. Refuses to overwrite an existing file
+    (foundation.filesafety.safe_write's default behavior).
     """
     tickets_root = Path(tickets_root)
     tickets_root.mkdir(parents=True, exist_ok=True)
@@ -58,7 +63,7 @@ def create_ticket(
 
     number = identity.next_number(uid, _existing_numbers(tickets_root, uid))
     ident = identity.NumberedIdentity(uid=uid, number=number)
-    slug = slugify.slugify(title)
+    slug = slugify.slugify(slug) if slug else slugify.slugify(title)
     filename = f"{ident}_{slug}.md" if slug else f"{ident}.md"
     ticket_path = tickets_root / filename
 

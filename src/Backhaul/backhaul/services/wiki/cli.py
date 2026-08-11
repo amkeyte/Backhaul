@@ -16,6 +16,7 @@ from backhaul.foundation import frontmatter as _frontmatter
 from backhaul.foundation import projects as _projects
 
 from . import create as _create
+from . import defaults as _defaults
 from . import index as _index
 
 # Backhaul/src/Backhaul/backhaul/services/wiki/cli.py -> parents[5] is the repo root.
@@ -45,6 +46,12 @@ def _index_path(wiki_root: Path) -> Path:
     return wiki_root.parent / "WIKI_INDEX.md"
 
 
+def _dashboard_path(wiki_root: Path) -> Path:
+    # wiki_root.parent is the "backhaul/" data folder; the dashboard sits one level above
+    # that, at the project's true root — mirrors services/ticket/cli.py's _dashboard_path.
+    return wiki_root.parent.parent / "BACKHAUL.md"
+
+
 def _cmd_new(args: argparse.Namespace) -> int:
     cfg = _config.load_config(_resolve_config_path(args))
     wiki_root = _wiki_root(cfg)
@@ -59,8 +66,10 @@ def _cmd_new(args: argparse.Namespace) -> int:
     )
 
     index_path = _index_path(wiki_root)
-    _index.refresh_breadcrumb(path, index_path)
-    _index.build_index(wiki_root, index_path)
+    dashboard_path = _dashboard_path(wiki_root)
+    project_name = _config.get_project_name(cfg)
+    _index.refresh_header(path, index_path, dashboard_path=dashboard_path, project_name=project_name)
+    _index.build_index(wiki_root, index_path, dashboard_path=dashboard_path, project_name=project_name)
     print(f"OK: created {path.relative_to(wiki_root)}")
     return 0
 
@@ -69,7 +78,10 @@ def _cmd_index(args: argparse.Namespace) -> int:
     cfg = _config.load_config(_resolve_config_path(args))
     wiki_root = _wiki_root(cfg)
     out = Path(args.output) if args.output else _index_path(wiki_root)
-    kwargs: dict = {}
+    kwargs: dict = {
+        "dashboard_path": _dashboard_path(wiki_root),
+        "project_name": _config.get_project_name(cfg),
+    }
     if args.category:
         kwargs["category_prefix"] = args.category
     if args.title:
@@ -80,7 +92,7 @@ def _cmd_index(args: argparse.Namespace) -> int:
 
 
 def _cmd_refresh(args: argparse.Namespace) -> int:
-    """Recompute every page's breadcrumb and rebuild the index.
+    """Recompute every page's header and rebuild the index.
 
     Same purpose as `bht refresh`: fixes links generated somewhere other than this machine
     (a different checkout path, or a dev sandbox) by recomputing them against this machine's
@@ -89,6 +101,8 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
     cfg = _config.load_config(_resolve_config_path(args))
     wiki_root = _wiki_root(cfg)
     index_path = _index_path(wiki_root)
+    dashboard_path = _dashboard_path(wiki_root)
+    project_name = _config.get_project_name(cfg)
 
     count = 0
     for page_path in sorted(wiki_root.glob("**/*.md")):
@@ -98,11 +112,52 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
             continue
         if "category" not in doc.frontmatter:
             continue
-        _index.refresh_breadcrumb(page_path, index_path)
+        _index.refresh_header(
+            page_path, index_path,
+            dashboard_path=dashboard_path, project_name=project_name,
+        )
         count += 1
 
-    _index.build_index(wiki_root, index_path)
+    _index.build_index(wiki_root, index_path, dashboard_path=dashboard_path, project_name=project_name)
     print(f"OK: refreshed {count} page(s), rebuilt the index at {index_path}")
+    return 0
+
+
+def _cmd_seed_meta(args: argparse.Namespace) -> int:
+    """Install the canonical module-usage pages (maintained as real wiki content in the
+    "backhaul" project itself — see that project's own meta/ pages) into this project's wiki.
+    Additive only: never overwrites a page that already exists here."""
+    cfg = _config.load_config(_resolve_config_path(args))
+    wiki_root = _wiki_root(cfg)
+
+    source_cfg_path = _projects.resolve_project_config(_PROJECTS_PATH, args.source_project)
+    source_cfg = _config.load_config(source_cfg_path)
+    source_wiki_root = _wiki_root(source_cfg)
+
+    try:
+        result = _defaults.seed_meta_wiki(wiki_root, source_wiki_root, category=args.category)
+    except _defaults.DefaultsError as e:
+        print(f"FAIL: {e}", file=sys.stderr)
+        return 1
+
+    index_path = _index_path(wiki_root)
+    dashboard_path = _dashboard_path(wiki_root)
+    project_name = _config.get_project_name(cfg)
+    for slug in result["created"]:
+        page_path = (wiki_root / args.category / f"{slug}.md") if args.category else (wiki_root / f"{slug}.md")
+        _index.refresh_header(
+            page_path, index_path,
+            dashboard_path=dashboard_path, project_name=project_name,
+        )
+    if result["created"]:
+        _index.build_index(wiki_root, index_path, dashboard_path=dashboard_path, project_name=project_name)
+
+    if result["created"]:
+        print(f"OK: installed {', '.join(result['created'])}")
+    if result["skipped"]:
+        print(f"Skipped (already present): {', '.join(result['skipped'])}")
+    if not result["created"] and not result["skipped"]:
+        print("Nothing to install.")
     return 0
 
 
@@ -140,9 +195,14 @@ def main(argv: list[str] | None = None) -> int:
 
     p_refresh = sub.add_parser(
         "refresh",
-        help="Recompute every page's breadcrumb and rebuild the index against this machine's real paths.",
+        help="Recompute every page's header and rebuild the index against this machine's real paths.",
     )
     p_refresh.set_defaults(func=_cmd_refresh)
+
+    p_seed = sub.add_parser("seed-meta", help="Install the canonical module-usage pages (bht/bhw/bhrm/...) into this project's wiki.")
+    p_seed.add_argument("--category", default="meta", help='Defaults to "meta".')
+    p_seed.add_argument("--source-project", default="backhaul", help='Named project to copy the canonical pages from. Defaults to "backhaul" (this repo\'s own dogfooded copy).')
+    p_seed.set_defaults(func=_cmd_seed_meta)
 
     p_projects = sub.add_parser("projects", help="List registered projects (config/projects.json).")
     p_projects.set_defaults(func=_cmd_projects)

@@ -49,16 +49,35 @@ def test_open_close_and_board(tmp_path: Path):
     assert "Clean the car" not in board_path.read_text(encoding="utf-8")
 
 
+def test_board_includes_header_linking_back_to_dashboard(tmp_path: Path):
+    cfg_path = _write_config(tmp_path)
+    main(["--config", str(cfg_path), "open", "--client", "Arryn", "--title", "Clean the car"])
+
+    board_path = tmp_path / "Fronthaul" / "BOARD.md"
+    content = board_path.read_text(encoding="utf-8")
+    assert content.startswith("<!-- bh-header:start -->")
+    assert "[Dashboard](../BACKHAUL.md)" in content
+
+
+def test_open_with_slug_override(tmp_path: Path):
+    cfg_path = _write_config(tmp_path)
+    assert main([
+        "--config", str(cfg_path), "open", "--client", "Arryn",
+        "--title", "A much longer descriptive title", "--slug", "alma",
+    ]) == 0
+    assert (tmp_path / "Fronthaul" / "tickets" / "ARR_001_alma.md").exists()
+
+
 def test_refresh_recomputes_links_against_current_config(tmp_path: Path):
     cfg_path = _write_config(tmp_path)
     main(["--config", str(cfg_path), "open", "--client", "Arryn", "--title", "Clean the car"])
 
     ticket_path = tmp_path / "Fronthaul" / "tickets" / "ARR_001_clean-the-car.md"
-    stale_block = "<!-- board:start -->\n[Board](../BOARD.md) | [Folder](openfolder:///C:/stale/path)\n<!-- board:end -->"
+    stale_block = "<!-- bh-header:start -->\n[Board](../BOARD.md) | [Folder](openfolder:///C:/stale/path)\n<!-- bh-header:end -->"
     doc = frontmatter.parse(ticket_path)
     import re
 
-    doc.body = re.sub(r"<!-- board:start -->.*?<!-- board:end -->", stale_block, doc.body, flags=re.DOTALL)
+    doc.body = re.sub(r"<!-- bh-header:start -->.*?<!-- bh-header:end -->", stale_block, doc.body, flags=re.DOTALL)
     frontmatter.write(doc)
     assert "stale/path" in ticket_path.read_text(encoding="utf-8")
 

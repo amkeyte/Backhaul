@@ -18,6 +18,8 @@ bht = "backhaul.services.ticket.cli:main"
 bht-install-editmd = "backhaul.modules.handlers.editmd.install:main"
 bht-install-openfolder = "backhaul.modules.handlers.openfolder.install:main"
 bhw = "backhaul.services.wiki.cli:main"
+bhrm = "backhaul.modules.roadmap.cli:main"
+bhrole = "backhaul.modules.roles.cli:main"
 backhaul = "backhaul.cli:main"
 
 [build-system]
@@ -31,5 +33,6 @@ include = ["backhaul*"]
 [tool.setuptools.package-data]
 "backhaul.services.ticket" = ["templates/*.tmpl"]
 "backhaul.services.wiki" = ["templates/*.tmpl"]
+"backhaul.modules.roadmap" = ["templates/*.tmpl"]
 "backhaul.modules.handlers.editmd" = ["editmd.vbs"]
 "backhaul.modules.handlers.openfolder" = ["openfolder.vbs"]
