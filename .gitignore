@@ -363,6 +363,10 @@ MigrationBackup/
 config/config.local.json
 src/Backhaul/config/config.local.json
 
+# Backhaul: per-machine project registry (name -> config.local.json path), never committed
+config/projects.json
+src/Backhaul/config/projects.json
+
 # Backhaul: Python virtualenv (project-local, per migration/PYTHON_PROJECT_SETUP.md)
 .venv/
 *.egg-info/

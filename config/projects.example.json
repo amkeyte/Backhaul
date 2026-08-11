@@ -1,0 +1,4 @@
+{
+  "personal": "PATH/TO/THIS/CHECKOUT/config/config.local.json",
+  "EXAMPLE_PROJECT": "PATH/TO/THAT/PROJECT/config.local.json"
+}

@@ -19,13 +19,49 @@ class ConfigError(Exception):
     """Raised when config.local.json is missing, unreadable, or fails schema validation."""
 
 
+_REQUIRED_TOP_LEVEL = ("version", "content_roots")
+_REQUIRED_CONTENT_ROOTS = ("tickets", "wiki")
+
+
 def load_config(config_path: str | Path) -> dict[str, Any]:
     """Load and return the local machine config as a dict.
 
-    Raises ConfigError if the file is missing or not valid JSON. Schema validation against
-    config/config.schema.json is planned but not yet implemented here.
+    Raises ConfigError if the file is missing, not valid JSON, or fails the minimal shape
+    check against config/config.schema.json (required keys only — full JSON Schema
+    validation is planned but not yet implemented here).
     """
-    raise NotImplementedError("stub — see migration/MIGRATION_PLAN.md §6")
+    p = Path(config_path)
+    if not p.is_file():
+        raise ConfigError(
+            f"{p}: no config.local.json here. Copy config/config.local.example.json to "
+            f"config/config.local.json and point content_roots at this machine's content."
+        )
+
+    try:
+        text = p.read_text(encoding="utf-8")
+    except OSError as e:
+        raise ConfigError(f"{p}: could not read config file: {e}") from e
+
+    try:
+        config = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ConfigError(f"{p}: not valid JSON: {e}") from e
+
+    if not isinstance(config, dict):
+        raise ConfigError(f"{p}: top level of config must be a JSON object")
+
+    missing = [k for k in _REQUIRED_TOP_LEVEL if k not in config]
+    if missing:
+        raise ConfigError(f"{p}: missing required key(s): {', '.join(missing)}")
+
+    content_roots = config["content_roots"]
+    if not isinstance(content_roots, dict):
+        raise ConfigError(f"{p}: content_roots must be an object")
+    missing_roots = [k for k in _REQUIRED_CONTENT_ROOTS if k not in content_roots]
+    if missing_roots:
+        raise ConfigError(f"{p}: content_roots missing required key(s): {', '.join(missing_roots)}")
+
+    return config
 
 
 def get_enabled_modules(config: dict[str, Any]) -> list[str]:
@@ -34,4 +70,7 @@ def get_enabled_modules(config: dict[str, Any]) -> list[str]:
     Note: BHT and BHW are baseline/always-present services, not gated by this list.
     See migration/ARCHITECTURE.md.
     """
-    raise NotImplementedError("stub — see migration/MODULE_SYSTEM.md")
+    modules = config.get("enabled_modules", [])
+    if not isinstance(modules, list):
+        raise ConfigError("enabled_modules must be a list of module id strings")
+    return list(modules)

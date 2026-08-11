@@ -1,8 +1,11 @@
 {
   "version": "0.1.0",
   "content_roots": {
-    "tickets": "PATH/TO/THIS/MACHINE/tickets",
-    "wiki": "PATH/TO/THIS/MACHINE/wiki"
+    "tickets": "PATH/TO/THIS/PROJECT/backhaul/tickets",
+    "wiki": "PATH/TO/THIS/PROJECT/backhaul/wiki"
   },
-  "enabled_modules": []
+  "enabled_modules": [],
+  "client_folders": {
+    "EXAMPLE_UID": "PATH/TO/THAT/CLIENT/PROJECT/FOLDER"
+  }
 }

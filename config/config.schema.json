@@ -22,6 +22,11 @@
       "type": "array",
       "description": "Optional module ids to enable (e.g. \"docx\", \"shortcuts\", \"handlers.editmd\", \"handlers.openfolder\"). BHT/BHW are always on and not listed here.",
       "items": { "type": "string" }
+    },
+    "client_folders": {
+      "type": "object",
+      "description": "Per-client UID -> project folder path (e.g. \"UW\": \"C:\\\\Projects\\\\University of Washington\"), used by the ticket header's Folder link (opened via the openfolder: protocol handler). A client UID with no entry here falls back to content_roots.tickets's parent directory.",
+      "additionalProperties": { "type": "string" }
     }
   }
 }

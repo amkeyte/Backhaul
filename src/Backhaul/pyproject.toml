@@ -14,6 +14,11 @@ dev = ["pytest"]
 
 [project.scripts]
 backhaul-lnk = "backhaul.modules.shortcuts.cli:main"
+bht = "backhaul.services.ticket.cli:main"
+bht-install-editmd = "backhaul.modules.handlers.editmd.install:main"
+bht-install-openfolder = "backhaul.modules.handlers.openfolder.install:main"
+bhw = "backhaul.services.wiki.cli:main"
+backhaul = "backhaul.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -22,3 +27,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["backhaul*"]
+
+[tool.setuptools.package-data]
+"backhaul.services.ticket" = ["templates/*.tmpl"]
+"backhaul.services.wiki" = ["templates/*.tmpl"]
+"backhaul.modules.handlers.editmd" = ["editmd.vbs"]
+"backhaul.modules.handlers.openfolder" = ["openfolder.vbs"]
