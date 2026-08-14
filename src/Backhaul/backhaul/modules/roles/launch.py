@@ -9,9 +9,16 @@ causes the composer to flash the prefilled text and then silently clear itself b
 can send it — the folder-confirmation step in that flow appears to reset composer state. `q`
 without `folder` doesn't have this problem. Rather than auto-attaching the folder, the project
 root (when known) is prepended as a plain line inside the prompt text itself, telling the role
-which folder it needs and asking it to request that the user attach it — same information,
-delivered a way that doesn't fight the composer's reset behavior. If Claude Desktop's handling
-of `q`+`folder` together improves, this can revisit auto-attaching again.
+which folder it needs — same information, delivered a way that doesn't fight the composer's
+reset behavior. If Claude Desktop's handling of `q`+`folder` together improves, this can revisit
+auto-attaching again.
+
+The preamble line explicitly tells the role to *call* its folder-request tool, not just mention
+the need in chat (2026-08-12): a launched role reading a softer "ask me to attach it" instruction
+was observed reporting "I don't have access" as a conversational aside instead of invoking the
+tool that actually surfaces a permission prompt to the human — technically compliant with a
+vague instruction, but leaves the human having to notice and manually attach the folder anyway,
+which is exactly what this preamble exists to avoid.
 
 Extraction only looks at the first fenced code block following a "## Session bootstrap
 prompt" heading (case-insensitive) — the exact shape role.md.tmpl scaffolds. A role page
@@ -68,8 +75,9 @@ def build_launch_link(
       sandbox has nothing installed, and doesn't have Backhaul's own source folder attached
       (only the project's), so a session can't run bht/bhw/bhrm/bhrole at all until it installs
       them itself. Expected to be a real git remote URL (e.g. "https://github.com/user/Backhaul").
-    - `project_root`, if given, names the folder this role needs and asks the agent to request
-      it from the user.
+    - `project_root`, if given, names the folder this role needs and instructs the agent to
+      call its folder-request tool to prompt the user for it, rather than just mentioning the
+      need conversationally.
 
     Both are expected to already be resolved for the machine the link will actually be clicked
     on — pure text, no filesystem or network access here.
@@ -80,8 +88,9 @@ def build_launch_link(
         return None
     if project_root is not None:
         prompt = (
-            f"This role's project folder is {project_root} — if you don't already have file "
-            "access to it, ask me to attach it before reading anything.\n\n"
+            f"This role's project folder is {project_root}. If you don't already have file "
+            "access to it, call your folder-request tool now to prompt me for it — don't just "
+            "tell me you don't have access. Do this before reading anything.\n\n"
         ) + prompt
     if repo_url is not None:
         clone_url = repo_url[:-4] if repo_url.endswith(".git") else repo_url

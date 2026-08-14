@@ -20,7 +20,7 @@
 | Title | Status | Summary | Edit |
 |---|---|---|---|
 | [BHRM — Roadmap Conventions](wiki/meta/bhrm.md) | draft | Roadmap node ID scheme, why short slugs matter here, and CLI cheatsheet. | [Edit](editmd:///C:/_local/source/Backhaul/backhaul/wiki/meta/bhrm.md) |
-| [BHRole — Roles Conventions](wiki/meta/bhrole.md) | draft | Role page ID scheme (flat slug, no registry), the Launch link mechanism, and CLI cheatsheet. | [Edit](editmd:///C:/_local/source/Backhaul/backhaul/wiki/meta/bhrole.md) |
+| [BHRole — Agent Role Conventions](wiki/meta/bhrole.md) | draft | Role page ID scheme, why bootstrap prompts must stay evergreen, the Launch link mechanism, and CLI cheatsheet. | [Edit](editmd:///C:/_local/source/Backhaul/backhaul/wiki/meta/bhrole.md) |
 | [BHT — Ticket Conventions](wiki/meta/bht.md) | draft | Ticket ID scheme, slug convention, and CLI cheatsheet. | [Edit](editmd:///C:/_local/source/Backhaul/backhaul/wiki/meta/bht.md) |
 | [BHW — Wiki Conventions](wiki/meta/bhw.md) | draft | Wiki page ID scheme, slug convention, and CLI cheatsheet. | [Edit](editmd:///C:/_local/source/Backhaul/backhaul/wiki/meta/bhw.md) |
 

@@ -44,6 +44,17 @@ the filename.
 `open` -> `in-progress` | `blocked` -> `done`. Only `done` tickets drop off `BOARD.md` — they
 stay on disk, just excluded from the live board.
 
+## Length standard (2026-08-11)
+
+`BOARD.md` renders `title` and `context` as table columns — long values wrap awkwardly in a
+standard browser window and make the whole board harder to scan. Target: **title ≤ ~40
+characters, context ≤ 100 characters.** Context is the harder limit; title is a softer
+guideline (a couple characters over is fine, doubling it isn't). If the real detail doesn't fit,
+put it in the ticket body (the `## Summary`/`## Log` sections, which aren't length-constrained)
+and link out from context rather than cramming it into the table cell — e.g. "Full scope: see
+ticket body" or a link to a wiki plan doc. This isn't CLI-enforced (`bht open` won't stop you
+going over); it's a human convention, same as the roadmap-slug guidance in `bhrm.md`.
+
 ## CLI cheatsheet
 
 ```
@@ -68,4 +79,4 @@ command.
 
 - [BHW — Wiki Conventions](../meta/bhw.md)
 - [BHRM — Roadmap Conventions](../meta/bhrm.md)
-- [BHRole — Roles Conventions](../meta/bhrole.md)
+- [BHRole — Agent Role Conventions](../meta/bhrole.md)

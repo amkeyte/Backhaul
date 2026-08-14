@@ -48,6 +48,14 @@ graph, not a flat list — a long descriptive slug makes both harder to eyeball 
 tab-complete than a short code does. The ID itself never contains the slug (only the filename
 does), so this is purely about keeping files easy to work with, not about identity.
 
+## Title length
+
+`ROADMAP_INDEX.md` renders each node's title as part of a one-line list entry — same reasoning
+as BHT's length standard (see `meta/bht.md`). Target title length ≤ ~40 characters; put the
+detail (specific classes/files/packages involved) in the node's body instead of stuffing it into
+the title. Several nodes from the initial roadmap backfill run well over this — worth trimming
+next time they're touched, not urgent enough to warrant a dedicated pass on its own.
+
 ## Status vocabulary (kind-dependent)
 
 - **work**: `open` -> `resolved` | `superseded` (terminal once left `open`).
@@ -74,3 +82,4 @@ refuses to run if `"roadmap"` isn't in that project's `enabled_modules`.
 
 - [BHT — Ticket Conventions](../meta/bht.md)
 - [BHW — Wiki Conventions](../meta/bhw.md)
+- [BHRole — Agent Role Conventions](../meta/bhrole.md)

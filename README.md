@@ -140,8 +140,10 @@ role page without that section just has no Launch link.
 The link deliberately doesn't auto-attach the project folder via `folder=` — on Windows, `q`
 combined with `folder` was observed to flash the prefilled text and then silently clear it
 before it could be sent. `bhrole` instead folds the project root into the prompt text itself
-("This role's project folder is `<path>` — ask me to attach it before reading anything."), so
-the role still knows what to request without fighting that reset.
+("This role's project folder is `<path>`. If you don't already have file access to it, call
+your folder-request tool now to prompt me for it — don't just tell me you don't have access."),
+so the role actually triggers a real permission prompt instead of just noting the limitation in
+chat and leaving the human to notice and attach the folder manually.
 
 A launched session is also a bare sandbox — no Backhaul source, nothing pip-installed. Set
 `repo_url` in that project's `config.local.json` to this checkout's own git remote (e.g.
