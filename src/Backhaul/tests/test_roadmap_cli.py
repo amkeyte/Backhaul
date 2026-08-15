@@ -255,6 +255,34 @@ def test_dependents_downstream_blocking(tmp_path: Path, capsys: pytest.CaptureFi
     assert "RM_ARR_001" in capsys.readouterr().out
 
 
+def test_convergence_bypass_flags_and_prints(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    cfg_path = _write_config(tmp_path)
+
+    main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "Root", "--owner", "Arryn"])
+    main([
+        "--config", str(cfg_path), "new", "--client", "Arryn", "--title", "Milestone",
+        "--owner", "Arryn", "--kind", "convergence", "--depends-on", "RM_ARR_001",
+    ])
+    main([
+        "--config", str(cfg_path), "new", "--client", "Arryn", "--title", "Bypass candidate",
+        "--owner", "Arryn", "--depends-on", "RM_ARR_001",
+    ])
+
+    capsys.readouterr()
+    assert main(["--config", str(cfg_path), "convergence-bypass", "--uid", "RM_ARR"]) == 0
+    out = capsys.readouterr().out
+    assert "RM_ARR_003\tRM_ARR_002\tRM_ARR_001" in out
+
+
+def test_convergence_bypass_no_findings_prints_nothing(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    cfg_path = _write_config(tmp_path)
+    main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "Solo", "--owner", "Arryn"])
+
+    capsys.readouterr()
+    assert main(["--config", str(cfg_path), "convergence-bypass", "--uid", "RM_ARR"]) == 0
+    assert capsys.readouterr().out == ""
+
+
 def test_render_and_export_json(tmp_path: Path):
     cfg_path = _write_config(tmp_path)
     main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "A", "--owner", "Arryn"])

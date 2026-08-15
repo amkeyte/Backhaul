@@ -207,6 +207,71 @@ def blocking(nodes: dict[str, Node], nid: str) -> list[str]:
     return result
 
 
+def ancestors(nodes: dict[str, Node], nid: str) -> list[str]:
+    """Full transitive closure of DependsOn, regardless of status — every node nid depends on,
+    directly or indirectly. Mirror of downstream() (which walks dependents() forward); this
+    walks depends_on forward instead. Unlike blocking(), which only returns the *unsatisfied*
+    subset of ancestors, this returns the complete prerequisite set whether resolved/reached or
+    not — see BH_006 for why find_convergence_bypasses() needs the full set, not just the
+    unsatisfied one."""
+    seen: list[str] = []
+    seen_set: set[str] = set()
+    queue = list(nodes[nid].depends_on)
+    while queue:
+        current = queue.pop(0)
+        if current in seen_set:
+            continue
+        seen_set.add(current)
+        seen.append(current)
+        for nxt in nodes[current].depends_on:
+            if nxt not in seen_set:
+                queue.append(nxt)
+    return seen
+
+
+def find_convergence_bypasses(nodes: dict[str, Node]) -> list[tuple[str, str, list[str]]]:
+    """Candidate list (never a verdict — see below) of DependsOn edges that reach back into a
+    convergence node's own prerequisite territory without ever routing through the convergence
+    node itself. First formal definition of "bypass" in this codebase — see BH_006, which this
+    implements verbatim.
+
+    For each convergence node C, a node N is a bypass candidate when:
+    1. N is not one of C's own ancestors (C's prerequisites obviously don't depend on C).
+    2. N is not "gated by" C — not C itself, and not already downstream of C (properly routed
+       through the checkpoint).
+    3. N's own ancestor closure shares at least one node with C's ancestor closure — N reaches
+       back into the same prerequisite territory C was built to gate, without depending on C.
+
+    Advisory only, same discipline every other query here holds itself to (graph-tooling-spec's
+    "computes lists for a human to judge"): never raises, never blocks anything. A shared
+    ancestor doesn't automatically mean N *should* route through C — it may just coincidentally
+    share an early, unrelated prerequisite. This is "worth a human look," not "this graph is
+    invalid," unlike validate_graph()'s cycle check.
+
+    Deliberately does NOT factor in a node's `created` date to filter out nodes that predate the
+    convergence node (an option BH_006 explicitly left open, "left to the dev to decide at build
+    time") — keeping this to one clear rule for v1 rather than a second, date-based heuristic;
+    revisit if real usage shows this producing too much noise.
+
+    Returns (bypass_node_id, convergence_node_id, sorted shared-ancestor ids) tuples, sorted for
+    deterministic output.
+    """
+    findings: list[tuple[str, str, list[str]]] = []
+    for c in sorted(nodes.values(), key=lambda node: node.id):
+        if c.kind != "convergence":
+            continue
+        c_ancestors = set(ancestors(nodes, c.id))
+        gated_by_c = {c.id} | set(downstream(nodes, c.id))
+        for n in sorted(nodes.values(), key=lambda node: node.id):
+            if n.id == c.id or n.id in c_ancestors or n.id in gated_by_c:
+                continue
+            n_ancestors = set(ancestors(nodes, n.id))
+            overlap = n_ancestors & c_ancestors
+            if overlap:
+                findings.append((n.id, c.id, sorted(overlap)))
+    return sorted(findings, key=lambda finding: (finding[0], finding[1]))
+
+
 def _depth(nodes: dict[str, Node], nid: str, cache: dict[str, int]) -> int:
     """Longest path from a root (a node with no DependsOn) to nid, for render()'s indentation."""
     if nid in cache:

@@ -247,6 +247,28 @@ def test_dependents_is_direct_only(tmp_path: Path):
     assert _graph.dependents(nodes, "RM_TST_001") == ["RM_TST_002"]
 
 
+def test_ancestors_full_transitive_closure_regardless_of_status(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="A", status="open")  # unresolved on purpose
+    _write_node(root, "RM_TST", 2, title="B", depends_on=["RM_TST_001"])
+    _write_node(root, "RM_TST", 3, title="C", depends_on=["RM_TST_002"])
+    _write_node(root, "RM_TST", 4, title="D", depends_on=["RM_TST_003"])
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    # Closest to farthest, same convention downstream() uses — and includes RM_TST_001 even
+    # though it's still "open" (unlike blocking(), which would filter it to the unsatisfied set
+    # only — ancestors() always returns the complete prerequisite set).
+    assert _graph.ancestors(nodes, "RM_TST_004") == ["RM_TST_003", "RM_TST_002", "RM_TST_001"]
+
+
+def test_ancestors_no_deps_is_empty(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="Root")
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    assert _graph.ancestors(nodes, "RM_TST_001") == []
+
+
 def test_blocking_lists_unsatisfied_ancestors(tmp_path: Path):
     root = tmp_path / "roadmap"
     _write_node(root, "RM_TST", 1, title="A", status="open")
@@ -255,6 +277,80 @@ def test_blocking_lists_unsatisfied_ancestors(tmp_path: Path):
 
     nodes = _graph.load_graph(root, "RM_TST")
     assert _graph.blocking(nodes, "RM_TST_003") == ["RM_TST_001"]
+
+
+# --- find_convergence_bypasses (BH_006) ---------------------------------------------------
+
+
+def _write_bypass_fixture(tmp_path: Path) -> Path:
+    """RM_TST_001 <- RM_TST_002 <- RM_TST_003(convergence) <- RM_TST_004 (properly gated), plus
+    RM_TST_005 depending directly on RM_TST_001 (a bypass candidate — shares 001 with
+    RM_TST_003's ancestor set, without ever depending on RM_TST_003), and RM_TST_006 (fully
+    independent, no shared ancestor, should never appear)."""
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="Root prereq", status="resolved")
+    _write_node(root, "RM_TST", 2, title="Second prereq", status="resolved", depends_on=["RM_TST_001"])
+    _write_node(
+        root, "RM_TST", 3, title="Milestone", kind="convergence", status="reached",
+        depends_on=["RM_TST_002"],
+    )
+    _write_node(root, "RM_TST", 4, title="Properly gated", depends_on=["RM_TST_003"])
+    _write_node(root, "RM_TST", 5, title="Bypass candidate", depends_on=["RM_TST_001"])
+    _write_node(root, "RM_TST", 6, title="Unrelated")
+    return root
+
+
+def test_convergence_bypass_flags_genuine_candidate(tmp_path: Path):
+    root = _write_bypass_fixture(tmp_path)
+    nodes = _graph.load_graph(root, "RM_TST")
+
+    findings = _graph.find_convergence_bypasses(nodes)
+    assert findings == [("RM_TST_005", "RM_TST_003", ["RM_TST_001"])]
+
+
+def test_convergence_bypass_excludes_ancestors_of_the_convergence_node(tmp_path: Path):
+    root = _write_bypass_fixture(tmp_path)
+    nodes = _graph.load_graph(root, "RM_TST")
+
+    findings = _graph.find_convergence_bypasses(nodes)
+    flagged_ids = {n_id for n_id, _, _ in findings}
+    assert "RM_TST_001" not in flagged_ids
+    assert "RM_TST_002" not in flagged_ids
+
+
+def test_convergence_bypass_excludes_properly_gated_downstream_node(tmp_path: Path):
+    root = _write_bypass_fixture(tmp_path)
+    nodes = _graph.load_graph(root, "RM_TST")
+
+    findings = _graph.find_convergence_bypasses(nodes)
+    flagged_ids = {n_id for n_id, _, _ in findings}
+    assert "RM_TST_004" not in flagged_ids
+
+
+def test_convergence_bypass_excludes_unrelated_node(tmp_path: Path):
+    root = _write_bypass_fixture(tmp_path)
+    nodes = _graph.load_graph(root, "RM_TST")
+
+    findings = _graph.find_convergence_bypasses(nodes)
+    flagged_ids = {n_id for n_id, _, _ in findings}
+    assert "RM_TST_006" not in flagged_ids
+
+
+def test_convergence_bypass_empty_when_no_convergence_nodes(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="A")
+    _write_node(root, "RM_TST", 2, title="B", depends_on=["RM_TST_001"])
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    assert _graph.find_convergence_bypasses(nodes) == []
+
+
+def test_convergence_bypass_never_raises_is_advisory_only(tmp_path: Path):
+    """Sanity check on the module's own stated contract: this is a plain list-returning query,
+    never an exception-raising one, even against a graph that has real bypass findings."""
+    root = _write_bypass_fixture(tmp_path)
+    nodes = _graph.load_graph(root, "RM_TST")
+    _graph.find_convergence_bypasses(nodes)  # must not raise
 
 
 def test_render_lists_actionable_first(tmp_path: Path):

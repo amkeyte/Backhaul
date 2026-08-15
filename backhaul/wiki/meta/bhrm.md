@@ -77,11 +77,36 @@ work/open-and-blocked gray, convergence/reached gold solid border, convergence/W
 border. Supports `?focus=RM_XXX_NNN` in the URL — highlights and scrolls to that node on load,
 same behavior the mockup proved against real pilot data.
 
-**The `Visualize` line from the original node-format-spec.md is deliberately not wired in yet.**
-Doing so would mean `render`/`index` need to know where a generated HTML file actually lives (a
-new `--html-path` or a location convention) — extra cross-command coupling not worth taking on
-until a real project has an HTML view checked in somewhere. `render-html` ships standalone for
-now; that wiring is a natural follow-up once there's a real answer to "where does it live."
+**`bhrm index` links to a generated HTML view automatically, if one exists.** `render_index()`
+checks for `ROADMAP_GRAPH_<uid>.html` (e.g. `ROADMAP_GRAPH_RM_FRO.html`) sitting next to
+`ROADMAP_INDEX.md` itself, and adds a `**Graph view:** [Open in browser ↗]` line under that
+UID's section when it finds one — pure filesystem-existence check, no new config or CLI flag.
+`render-html --output` is still fully user-controlled (default: stdout) — using this
+conventional filename is what makes the link appear, not a requirement. The full `Visualize`
+line from the original node-format-spec.md (wired into every node's own header, not just the
+index) is still deliberately not built — a narrower version of that idea, scoped to the index
+only, is what shipped here.
+
+## Convergence-bypass check (advisory)
+
+`bhrm convergence-bypass --uid RM_XXX` lists `DependsOn` edges that reach back into a
+convergence node's own prerequisite territory without ever routing through the convergence
+node itself — "skipping the checkpoint." First formal definition of "bypass" in this codebase
+(see BH_006) — the idea traces back to a hand-colored `.gate-edge` on the original pilot
+mockup, never written down as a rule until this.
+
+Precisely: for convergence node C, a node N is a bypass candidate when N isn't one of C's own
+ancestors, isn't already gated by C (C itself or anything downstream of it), and N's own
+ancestor closure shares at least one node with C's ancestor closure. Output is one line per
+`(N, C, shared ancestors)` — same worklist style as `dependents`/`downstream`/`blocking`, never
+a pass/fail verdict and never raises, even when it finds real candidates. A shared ancestor
+doesn't automatically mean N *should* depend on C; it means it's worth a human looking at why
+it doesn't. Deliberately does **not** factor in a node's `created` date to filter out nodes
+that predate the convergence node — one clear rule for v1, not a second date-based heuristic.
+
+This is separate from `bhrm validate` on purpose — `validate`'s contract is "raises on a cycle,
+silent otherwise," a hard error; this is advisory and never blocks anything, so it stays its
+own command rather than changing what `validate` means.
 
 ## CLI cheatsheet
 
@@ -90,6 +115,7 @@ bhrm new --client <name> --title "..." --owner <name> [--kind work|convergence] 
 bhrm validate --uid RM_XXX
 bhrm frontier --uid RM_XXX
 bhrm dependents <ID>   |   bhrm downstream <ID>   |   bhrm blocking <ID>
+bhrm convergence-bypass --uid RM_XXX
 bhrm render --uid RM_XXX [--output PATH] [--title "..."]
 bhrm render-html --uid RM_XXX [--output PATH] [--title "..."]
 bhrm export-json --uid RM_XXX [--out PATH]

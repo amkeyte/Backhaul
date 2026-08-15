@@ -178,6 +178,14 @@ def _cmd_blocking(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_convergence_bypass(args: argparse.Namespace) -> int:
+    cfg = _load_enabled_config(args)
+    nodes = _load_graph_for_uid(cfg, args.uid)
+    for n_id, c_id, shared in _graph.find_convergence_bypasses(nodes):
+        print(f"{n_id}\t{c_id}\t{','.join(shared)}")
+    return 0
+
+
 def _cmd_render(args: argparse.Namespace) -> int:
     cfg = _load_enabled_config(args)
     nodes = _load_graph_for_uid(cfg, args.uid)
@@ -321,6 +329,13 @@ def main(argv: list[str] | None = None) -> int:
     p_blocking = sub.add_parser("blocking", help="Unresolved ancestors of a node ID, transitively.")
     p_blocking.add_argument("id")
     p_blocking.set_defaults(func=_cmd_blocking)
+
+    p_conv = sub.add_parser(
+        "convergence-bypass",
+        help="List DependsOn edges that reach past a convergence node's checkpoint (advisory, never blocks).",
+    )
+    p_conv.add_argument("--uid", required=True)
+    p_conv.set_defaults(func=_cmd_convergence_bypass)
 
     p_render = sub.add_parser("render", help="Generate the crawlable markdown index for one UID.")
     p_render.add_argument("--uid", required=True)
