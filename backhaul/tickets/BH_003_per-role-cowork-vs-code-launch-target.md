@@ -22,3 +22,6 @@ Per-role Cowork vs Code launch target
 ## Log
 
 - 2026-08-13: Ticket opened.
+<!-- bh-header:start -->
+**Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_local/source/Backhaul)
+<!-- bh-header:end -->

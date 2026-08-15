@@ -351,6 +351,10 @@ def render_index(
         validate_graph(nodes)
         lines.append(f"## {uid}")
         lines.append("")
+        html_path = output_dir / html_graph_filename(uid)
+        if html_path.exists():
+            lines.append(f"**Graph view:** [Open in browser ↗]({html_graph_filename(uid)})")
+            lines.append("")
         lines.extend(_render_body(nodes, level=2, output_dir=output_dir))
         lines.append("")
 
@@ -395,3 +399,226 @@ def export_json(nodes: dict[str, Node]) -> dict[str, Any]:
             for dep in node.depends_on
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# HTML/SVG rendering (bhrm render-html) — see BH_005's Design section for the
+# decisions this implements: depth-layered layout, five-bucket status color,
+# the export_json()-as-second-renderer split, and the edge-direction gotcha.
+# ---------------------------------------------------------------------------
+
+def html_graph_filename(uid: str) -> str:
+    """Conventional filename `render_index()` looks for, sitting next to the index itself
+    (same directory as ROADMAP_INDEX.md), to link a UID's HTML graph view automatically. Purely
+    a filesystem-existence check at render time — `bhrm render-html --output` is never forced
+    to this name (still fully user-controlled), so a project that's never generated one just
+    gets no link, same graceful-omit pattern the rest of this module uses (no Roadmap/Roles
+    module enabled -> no dashboard line, no ticket -> no Ticket line, etc.). Using this name is
+    what makes the link appear without any new per-project config or CLI flag."""
+    return f"ROADMAP_GRAPH_{uid}.html"
+
+
+_HTML_BOX_WIDTH = 190
+_HTML_WORK_HEIGHT = 44
+_HTML_CONV_HEIGHT = 70
+_HTML_MARGIN_X = 40
+_HTML_MARGIN_Y = 40
+_HTML_GAP_X = 60
+_HTML_GAP_Y = 20
+
+Position = tuple[float, float, float, float]  # x, y, width, height
+
+
+def _html_layout(nodes: dict[str, Node]) -> tuple[dict[str, Position], float, float]:
+    """Compute (x, y, w, h) for every node: layer = _depth() (already computed for render()'s
+    markdown indentation), left to right; within a layer, nodes ordered by ID — the same
+    tie-break render() itself uses. Deterministic: the same graph always produces the same
+    layout, never dependent on dict iteration order. Returns (positions, canvas_width,
+    canvas_height)."""
+    cache: dict[str, int] = {}
+    depths = {nid: _depth(nodes, nid, cache) for nid in nodes}
+
+    layers: dict[int, list[str]] = {}
+    for nid in sorted(nodes, key=lambda n: (depths[n], n)):
+        layers.setdefault(depths[nid], []).append(nid)
+
+    positions: dict[str, Position] = {}
+    x = float(_HTML_MARGIN_X)
+    canvas_height = float(_HTML_MARGIN_Y)
+    for depth in sorted(layers):
+        y = float(_HTML_MARGIN_Y)
+        for nid in layers[depth]:
+            h = _HTML_CONV_HEIGHT if nodes[nid].kind == "convergence" else _HTML_WORK_HEIGHT
+            positions[nid] = (x, y, float(_HTML_BOX_WIDTH), float(h))
+            y += h + _HTML_GAP_Y
+        canvas_height = max(canvas_height, y - _HTML_GAP_Y + _HTML_MARGIN_Y)
+        x += _HTML_BOX_WIDTH + _HTML_GAP_X
+    canvas_width = x - _HTML_GAP_X + _HTML_MARGIN_X
+    return positions, canvas_width, canvas_height
+
+
+def _html_color(node: Node, actionable: bool) -> tuple[str, str, str]:
+    """(fill, stroke, dash-array) for one node — five buckets lifted from the original
+    mockup's own legend (already validated against real pilot data, not aesthetic guessing):
+    work/resolved-or-superseded -> green, work/open+actionable -> blue,
+    work/open+blocked -> gray, convergence/reached -> gold solid,
+    convergence/WIP -> orange dashed."""
+    if node.kind == "convergence":
+        if node.status == "reached":
+            return "#b8860b", "#f0c25a", ""
+        return "#a3450f", "#ffb27a", "5,3"
+    if node.status in ("resolved", "superseded"):
+        return "#2e7d4a", "#2e7d4a", ""
+    if actionable:
+        return "#1565c0", "#1565c0", ""
+    return "#4a4f58", "#4a4f58", ""
+
+
+def _xml_escape(text: str) -> str:
+    return (
+        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+    )
+
+
+_HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{title}</title>
+<style>
+  body {{ font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #14161a; color: #e8e8e8; margin: 0; padding: 24px; }}
+  h1 {{ margin: 0 0 4px 0; font-size: 20px; }}
+  .subtitle {{ color: #9aa0a6; font-size: 13px; margin-bottom: 12px; }}
+  .legend {{ display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 16px; font-size: 12px; color: #cfd3d8; }}
+  .legend-item {{ display: flex; align-items: center; gap: 6px; }}
+  .swatch {{ width: 14px; height: 14px; border-radius: 3px; display: inline-block; flex-shrink: 0; }}
+  .frontier-banner {{ background: #123b2a; border: 1px solid #2e7d4a; color: #a6f2c9; padding: 8px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }}
+  svg {{ background: #1b1e24; border-radius: 8px; border: 1px solid #2a2e36; }}
+  .node-label {{ font-size: 11px; fill: #f2f2f2; font-weight: 600; }}
+  .node-sub {{ font-size: 9px; fill: #cfd3d8; }}
+  .edge {{ stroke: #5a6270; stroke-width: 1.4; fill: none; marker-end: url(#arrow); }}
+  .focus-banner {{ display: none; padding: 8px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }}
+  .node-group rect {{ transition: stroke 0.15s ease, filter 0.15s ease; }}
+  .node-group.focused rect {{ stroke: #ffe066 !important; stroke-width: 4px !important; filter: drop-shadow(0 0 10px rgba(255, 224, 102, 0.85)); }}
+  .node-group.focused .node-label {{ fill: #ffe066; }}
+</style>
+</head>
+<body>
+
+<h1>{title}</h1>
+<div class="subtitle">Generated by `bhrm render-html` — do not hand-edit.</div>
+
+<div class="frontier-banner"><strong>Actionable now:</strong> {frontier_text}</div>
+
+<div id="focus-banner" class="focus-banner"></div>
+
+<div class="legend">
+  <div class="legend-item"><span class="swatch" style="background:#2e7d4a;"></span> resolved / superseded</div>
+  <div class="legend-item"><span class="swatch" style="background:#1565c0;"></span> open &amp; actionable</div>
+  <div class="legend-item"><span class="swatch" style="background:#4a4f58;"></span> open &amp; blocked</div>
+  <div class="legend-item"><span class="swatch" style="background:#b8860b;"></span> convergence · reached</div>
+  <div class="legend-item"><span class="swatch" style="background:#a3450f; border:1px dashed #ffb27a;"></span> convergence · WIP</div>
+</div>
+
+{svg}
+
+<script>
+(function () {{
+  var params = new URLSearchParams(window.location.search);
+  var focus = params.get('focus');
+  var banner = document.getElementById('focus-banner');
+  if (!focus) return;
+
+  focus = focus.trim().toUpperCase();
+  var target = document.querySelector('.node-group[data-id="' + focus + '"]');
+
+  banner.style.display = 'block';
+  if (target) {{
+    target.classList.add('focused');
+    target.scrollIntoView({{ behavior: 'smooth', block: 'center', inline: 'center' }});
+    banner.style.background = '#123b2a';
+    banner.style.border = '1px solid #2e7d4a';
+    banner.style.color = '#a6f2c9';
+    banner.textContent = 'Focused on ' + focus + ' — highlighted below.';
+  }} else {{
+    banner.style.background = '#4a2f0a';
+    banner.style.border = '1px solid #a3661a';
+    banner.style.color = '#ffd9a0';
+    banner.textContent = 'No node "' + focus + '" in this graph.';
+  }}
+}})();
+</script>
+
+</body>
+</html>
+"""
+
+
+def render_html(nodes: dict[str, Node], *, title: str = "Roadmap Graph") -> str:
+    """Render one graph as a standalone, self-contained HTML/SVG document — a real, data-driven
+    successor to the hand-laid-out mockup
+    (intake/roadmap-nodes/design/Mockups/sample-visualization.html). No external assets, no
+    network calls; safe to open as a local file or serve as-is.
+
+    Consumes export_json(nodes) for node/edge data (a second renderer over the same export, not
+    a second parser) plus this module's own _depth() for layout, mirroring how render() already
+    reuses both. Layout and color are both pure functions of the graph's own data — same graph,
+    byte-identical output, no wall-clock timestamps or unsorted-dict-order dependence.
+    """
+    payload = export_json(nodes)
+    positions, canvas_width, canvas_height = _html_layout(nodes)
+
+    node_svg: list[str] = []
+    for entry in payload["nodes"]:
+        nid = entry["id"]
+        node = nodes[nid]
+        x, y, w, h = positions[nid]
+        fill, stroke, dash = _html_color(node, entry["actionable"])
+        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
+        label = _xml_escape(node.id)
+        name = _xml_escape(node.title)
+        status_tag = _xml_escape(f"{node.kind} · {node.status}")
+        node_svg.append(
+            f'<g class="node-group" data-id="{node.id}">'
+            f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="6" '
+            f'fill="{fill}" stroke="{stroke}" stroke-width="2"{dash_attr}/>'
+            f'<text x="{x + 10:g}" y="{y + 18:g}" class="node-label">{label}</text>'
+            f'<text x="{x + 10:g}" y="{y + 32:g}" class="node-sub">{name}</text>'
+            f"<title>{label} — {status_tag}. {name}</title>"
+            f"</g>"
+        )
+
+    edge_svg: list[str] = []
+    for edge in payload["edges"]:
+        # edge = {"from": dependent, "to": prerequisite}. Visual flow is left-to-right,
+        # prerequisite into what it unlocks, so the drawn source is "to" and the drawn target
+        # is "from" — reversed from the field names. See this function's own docstring / BH_005's
+        # Design section for why this isn't a literal from->to draw.
+        dependent, prerequisite = edge["from"], edge["to"]
+        sx, sy, sw, sh = positions[prerequisite]
+        tx, ty, tw, th = positions[dependent]
+        x1, y1 = sx + sw, sy + sh / 2
+        x2, y2 = tx, ty + th / 2
+        cx = (x1 + x2) / 2
+        edge_svg.append(f'<path class="edge" d="M{x1:g},{y1:g} C{cx:g},{y1:g} {cx:g},{y2:g} {x2:g},{y2:g}"/>')
+
+    svg = "\n".join(
+        [
+            f'<svg viewBox="0 0 {canvas_width:g} {canvas_height:g}" width="{canvas_width:g}" '
+            f'height="{canvas_height:g}" xmlns="http://www.w3.org/2000/svg">',
+            '<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" '
+            'orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L7,3 z" fill="#5a6270"/></marker></defs>',
+            *edge_svg,
+            *node_svg,
+            "</svg>",
+        ]
+    )
+
+    front = frontier(nodes)
+    frontier_text = (
+        ", ".join(f"{nid} ({nodes[nid].title})" for nid in front) if front else "nothing right now"
+    )
+
+    return _HTML_TEMPLATE.format(
+        title=_xml_escape(title), svg=svg, frontier_text=_xml_escape(frontier_text)
+    )

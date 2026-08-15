@@ -14,11 +14,13 @@
 | [Module System — the Poor Man's Plugin Design](wiki/design/module-system.md) | published | The enabled_modules design — foundation/services/modules layering and module packaging. | [Edit](editmd:///C:/_local/source/Backhaul/backhaul/wiki/design/module-system.md) |
 | [Python Project Setup — Backhaul.sln](wiki/design/python-project-setup.md) | published | The Python package layout, VS2022 project setup, and .gitignore additions. | [Edit](editmd:///C:/_local/source/Backhaul/backhaul/wiki/design/python-project-setup.md) |
 | [Solution Layout — What Lives in Backhaul.sln](wiki/design/solution-layout.md) | published | What lives in Backhaul.sln — the four Solution Explorer groupings. | [Edit](editmd:///C:/_local/source/Backhaul/backhaul/wiki/design/solution-layout.md) |
+| [Version & Schema Compatibility Plan](wiki/design/version-compat.md) | draft | How framework/module/instance versions interact: schema_version stamped per file, explicit migrate command, hard-fail on unmigratable drift. Supersedes the git-diff drift-check sketch in migration-plan.md §6. | [Edit](editmd:///C:/_local/source/Backhaul/backhaul/wiki/design/version-compat.md) |
 
 ## meta
 
 | Title | Status | Summary | Edit |
 |---|---|---|---|
+| [Backhaul — Cross-Service Command Conventions](wiki/meta/backhaul.md) | draft | The top-level backhaul CLI: dashboard, lint, projects — commands that span every service instead of belonging to one. | [Edit](editmd:///C:/_local/source/Backhaul/backhaul/wiki/meta/backhaul.md) |
 | [BHRM — Roadmap Conventions](wiki/meta/bhrm.md) | draft | Roadmap node ID scheme, why short slugs matter here, and CLI cheatsheet. | [Edit](editmd:///C:/_local/source/Backhaul/backhaul/wiki/meta/bhrm.md) |
 | [BHRole — Agent Role Conventions](wiki/meta/bhrole.md) | draft | Role page ID scheme, why bootstrap prompts must stay evergreen, the Launch link mechanism, and CLI cheatsheet. | [Edit](editmd:///C:/_local/source/Backhaul/backhaul/wiki/meta/bhrole.md) |
 | [BHT — Ticket Conventions](wiki/meta/bht.md) | draft | Ticket ID scheme, slug convention, and CLI cheatsheet. | [Edit](editmd:///C:/_local/source/Backhaul/backhaul/wiki/meta/bht.md) |

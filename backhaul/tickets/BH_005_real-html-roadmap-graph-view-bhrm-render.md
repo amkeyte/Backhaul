@@ -3,13 +3,13 @@ id: BH_005
 uid: BH
 number: 5
 client: BH
-status: open
+status: done
 title: Real HTML roadmap graph view (bhrm render-html)
 context: Mockup existed, never automated. export_json()+_depth() are the reusable
   foundation. See body.
 priority: low
 opened: '2026-08-14'
-closed: null
+closed: '2026-08-14'
 ---
 
 ## Summary
@@ -72,6 +72,74 @@ Scope
 
 Priority: low -- future feature, not blocking anything currently in flight.
 
+## Design (locked 2026-08-14)
+
+New `render_html(nodes, *, output_dir=None, title=...)` in `modules/roadmap/graph.py`, sitting
+next to `render()`. Layout: layer = `_depth()` (already computed, unchanged), left to right;
+within a layer, nodes sorted by ID — the same tie-break `render()` already uses for its own
+ordering, kept for determinism (same graph -> byte-identical output). Internally calls
+`export_json(nodes)` for the node/edge data rather than re-deriving fields from `Node` objects
+directly — a second renderer over the same export, per the original spec's own framing, not a
+second parser.
+
+**Edge-direction gotcha, worth calling out before someone implements this and gets it
+backwards:** `export_json`'s edges are `{"from": nid, "to": dep}` — *nid depends on dep*. The
+mockup's arrows flow left-to-right, prerequisite into what it unlocks, so the drawn arrow must
+go from `to` (the prerequisite, lower depth) to `from` (the dependent, higher depth) —
+reversed from the field names, not a literal from-to draw.
+
+Color scheme (five buckets, lifted from the mockup's own legend, already validated against
+real pilot data):
+- kind=work, status=resolved/superseded -> green
+- kind=work, status=open, actionable -> blue
+- kind=work, status=open, not actionable -> gray
+- kind=convergence, status=reached -> gold, solid border
+- kind=convergence, status=WIP -> orange fill, dashed border
+
+`?focus=RM-NNNN` behavior lifted near-verbatim from the mockup's `<script>` block — small,
+self-contained, already proven against real data.
+
+**Visualize-line wiring into `render()`/`index()`: deferred, not part of this ticket.** Wiring
+it in would require those commands to know where the HTML output actually lives (a new
+`--html-path` or a location convention), which is extra cross-command coupling this ticket
+doesn't need to take on. `render-html` ships standalone; the Visualize line is a follow-up once
+a real project has an HTML view checked in somewhere and the "where does it live" question has
+a real answer instead of a guessed one.
+
+`schema.py`: confirmed no change — Visualize stays computed, never stored, same as the original
+spec's own discipline.
+
+CLI: `bhrm render-html --uid X [--output PATH] [--title "..."]`, mirroring `render`'s existing
+flags — stdout by default, `--output` to write a file, same convention `render`/`export-json`
+already use.
+
+Scope: `modules/roadmap/graph.py` (`render_html()` + a small layout/color helper), `modules/roadmap/cli.py`
+(new subcommand), tests (layout determinism on a fixed synthetic graph, color-mapping per
+kind/status/actionable combination), `wiki/meta/bhrm.md` (new command, note Visualize wiring is
+deferred).
+
 ## Log
 
 - 2026-08-13: Ticket opened.
+- 2026-08-14: Design locked — see Design section above. Not yet implemented.
+- 2026-08-14: Implemented per the Design section — `render_html()` + `_html_layout()`/
+  `_html_color()` in `modules/roadmap/graph.py`, `bhrm render-html` subcommand, tests
+  (layout determinism, edge-direction, color-mapping in `tests/test_roadmap.py`, CLI tests in
+  `tests/test_roadmap_cli.py`), docs (`wiki/meta/bhrm.md`). Dropped the unused `output_dir`
+  parameter from the locked signature — nothing in the actual implementation needed it (the
+  HTML is self-contained, no relative links to other files the way `render()`'s markdown output
+  has). Full suite green (296 passed). Closed.
+- 2026-08-14: Follow-up, requested against real mcRepos usage — `render_index()` now links a
+  UID's HTML graph view from `ROADMAP_INDEX.md` when one exists at the conventional path
+  (`html_graph_filename(uid)` = `ROADMAP_GRAPH_<uid>.html`, sitting next to the index itself).
+  Pure filesystem-existence check at render time, no new config/CLI flag — a project that's
+  never run `render-html` just gets no link, same graceful-omit pattern as the rest of this
+  module. `render-html --output` itself is still fully user-controlled (unchanged default:
+  stdout) — using the conventional name is what makes the link appear, not a requirement.
+  This is a narrower version of the Visualize-line wiring the original Design section deferred
+  (that was about wiring into every node's own header; this is just the index). Tests added
+  (`test_render_index_links_html_graph_view_when_present` and siblings in `tests/test_roadmap.py`,
+  CLI test in `tests/test_roadmap_cli.py`). Full suite green (300 passed).
+<!-- bh-header:start -->
+**Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_local/source/Backhaul)
+<!-- bh-header:end -->

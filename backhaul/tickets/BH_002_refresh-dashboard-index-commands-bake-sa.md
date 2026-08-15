@@ -147,3 +147,6 @@ refresh/dashboard/index commands bake sandboxed filesystem paths into generated 
 
 - 2026-08-11: Ticket opened.
 - 2026-08-11: Transferred to mcRepos (the live testbed for this class of bug) as BKHL_001, under a new `BKHL` (Backhaul) client namespace added to mcRepos's ticket registry specifically for Backhaul-tool-itself bugs. Closing here to avoid a duplicate open item — see mcRepos/backhaul/tickets/BKHL_001_refresh-dashboard-index-commands-bake-sa.md for the live copy and any further triage/resolution.
+<!-- bh-header:start -->
+**Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_local/source/Backhaul)
+<!-- bh-header:end -->

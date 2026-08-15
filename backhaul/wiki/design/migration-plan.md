@@ -144,6 +144,13 @@ Backhaul/
 
 ## 6. Config + versioning design
 
+**Superseded 2026-08-14 — see [Version & Schema Compatibility
+Plan](version-compat.md).** The single-`VERSION`-plus-git-diff design below was never
+implemented (`version_check.py` shipped as two `NotImplementedError` stubs) and is replaced,
+not extended, by a per-file `schema_version` compatibility contract with an explicit `migrate`
+command. Kept here for historical context only — follow the linked page for the current
+design.
+
 **Config file:** `Backhaul/config/config.local.json`, gitignored, created once per machine by
 a small interactive `configure.py` (asks for the content-root path, writes the file). Every
 script in the repo reads this file relative to its own location (`Path(__file__).parents[N] /

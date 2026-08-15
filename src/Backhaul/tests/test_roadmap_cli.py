@@ -121,6 +121,51 @@ def test_render_includes_links(tmp_path: Path):
     assert "RM_ARR_001_alma.md" in content
 
 
+def test_render_html_writes_file(tmp_path: Path):
+    cfg_path = _write_config(tmp_path)
+    main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "X", "--owner", "Arryn"])
+
+    out_path = tmp_path / "graph.html"
+    assert main(["--config", str(cfg_path), "render-html", "--uid", "RM_ARR", "--output", str(out_path)]) == 0
+    content = out_path.read_text(encoding="utf-8")
+    assert "<svg" in content
+    assert 'data-id="RM_ARR_001"' in content
+
+
+def test_render_html_stdout_default(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    cfg_path = _write_config(tmp_path)
+    main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "X", "--owner", "Arryn"])
+
+    capsys.readouterr()
+    assert main(["--config", str(cfg_path), "render-html", "--uid", "RM_ARR"]) == 0
+    assert "<svg" in capsys.readouterr().out
+
+
+def test_render_html_title_flag(tmp_path: Path):
+    cfg_path = _write_config(tmp_path)
+    main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "X", "--owner", "Arryn"])
+
+    out_path = tmp_path / "graph.html"
+    assert main([
+        "--config", str(cfg_path), "render-html", "--uid", "RM_ARR",
+        "--output", str(out_path), "--title", "Custom Title",
+    ]) == 0
+    assert "<title>Custom Title</title>" in out_path.read_text(encoding="utf-8")
+
+
+def test_index_links_generated_html_graph_view(tmp_path: Path):
+    cfg_path = _write_config(tmp_path)
+    main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "X", "--owner", "Arryn"])
+
+    html_out = tmp_path / "content" / "ROADMAP_GRAPH_RM_ARR.html"
+    assert main(["--config", str(cfg_path), "render-html", "--uid", "RM_ARR", "--output", str(html_out)]) == 0
+
+    index_out = tmp_path / "content" / "ROADMAP_INDEX.md"
+    assert main(["--config", str(cfg_path), "index"]) == 0
+    content = index_out.read_text(encoding="utf-8")
+    assert "[Open in browser ↗](ROADMAP_GRAPH_RM_ARR.html)" in content
+
+
 def test_index_includes_header_linking_back_to_dashboard(tmp_path: Path):
     cfg_path = _write_config(tmp_path)
     main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "X", "--owner", "Arryn"])

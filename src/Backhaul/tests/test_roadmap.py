@@ -504,6 +504,40 @@ def test_render_index_sections_each_graph_separately(tmp_path: Path):
     assert text.index("## RM_FRO") < text.index("## RM_SAT")
 
 
+def test_render_index_links_html_graph_view_when_present(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_FRO", 1, title="FM root")
+
+    # The conventional filename, sitting next to where the index itself renders to.
+    (root.parent / _graph.html_graph_filename("RM_FRO")).write_text("<html></html>", encoding="utf-8")
+
+    text = _graph.render_index(root)  # default output_dir = root.parent = tmp_path
+    assert "**Graph view:** [Open in browser ↗](ROADMAP_GRAPH_RM_FRO.html)" in text
+
+
+def test_render_index_omits_html_link_when_absent(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_FRO", 1, title="FM root")
+
+    text = _graph.render_index(root)
+    assert "Graph view" not in text
+
+
+def test_render_index_html_link_is_per_uid(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_FRO", 1, title="FM root")
+    _write_node(root, "RM_SAT", 1, title="Satchel root")
+
+    (root.parent / _graph.html_graph_filename("RM_FRO")).write_text("<html></html>", encoding="utf-8")
+    # No RM_SAT html file written.
+
+    text = _graph.render_index(root)
+    fro_section = text[text.index("## RM_FRO"):text.index("## RM_SAT")]
+    sat_section = text[text.index("## RM_SAT"):]
+    assert "Graph view" in fro_section
+    assert "Graph view" not in sat_section
+
+
 def test_render_index_no_graphs_yet(tmp_path: Path):
     root = tmp_path / "roadmap"
     root.mkdir()
@@ -553,6 +587,177 @@ def test_build_index_custom_title(tmp_path: Path):
     out = tmp_path / "ROADMAP_INDEX.md"
     _graph.build_index(root, out, title="# mcRepos Roadmaps")
     assert out.read_text(encoding="utf-8").startswith("# mcRepos Roadmaps")
+
+
+# --- render_html -----------------------------------------------------------------------------
+
+
+def test_html_layout_orders_by_depth_then_id(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="A")
+    _write_node(root, "RM_TST", 2, title="B", depends_on=["RM_TST_001"])
+    _write_node(root, "RM_TST", 3, title="C", depends_on=["RM_TST_001"])
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    positions, canvas_width, canvas_height = _graph._html_layout(nodes)
+
+    # Depth 0 (RM_TST_001) is strictly left of depth 1 (RM_TST_002/003).
+    assert positions["RM_TST_001"][0] < positions["RM_TST_002"][0]
+    assert positions["RM_TST_001"][0] < positions["RM_TST_003"][0]
+    # Same depth -> same x, ordered by ID within the layer (002 above 003).
+    assert positions["RM_TST_002"][0] == positions["RM_TST_003"][0]
+    assert positions["RM_TST_002"][1] < positions["RM_TST_003"][1]
+    assert canvas_width > 0 and canvas_height > 0
+
+
+def test_html_layout_is_deterministic(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="A")
+    _write_node(root, "RM_TST", 2, title="B", depends_on=["RM_TST_001"])
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    first = _graph.render_html(nodes)
+    second = _graph.render_html(nodes)
+    assert first == second
+
+
+def test_html_color_work_resolved_is_green():
+    node = _graph.Node(
+        frontmatter=validate({
+            "uid": "RM_TST", "number": 1, "kind": "work", "status": "resolved",
+            "title": "X", "owner": "O",
+        }),
+        path=Path("x.md"),
+    )
+    fill, stroke, dash = _graph._html_color(node, actionable=False)
+    assert fill == "#2e7d4a"
+    assert dash == ""
+
+
+def test_html_color_work_superseded_is_green():
+    node = _graph.Node(
+        frontmatter=validate({
+            "uid": "RM_TST", "number": 1, "kind": "work", "status": "superseded",
+            "title": "X", "owner": "O", "superseded_by": "RM_TST_002",
+        }),
+        path=Path("x.md"),
+    )
+    fill, _, _ = _graph._html_color(node, actionable=False)
+    assert fill == "#2e7d4a"
+
+
+def test_html_color_work_open_actionable_is_blue():
+    node = _graph.Node(
+        frontmatter=validate({
+            "uid": "RM_TST", "number": 1, "kind": "work", "status": "open",
+            "title": "X", "owner": "O",
+        }),
+        path=Path("x.md"),
+    )
+    fill, _, _ = _graph._html_color(node, actionable=True)
+    assert fill == "#1565c0"
+
+
+def test_html_color_work_open_blocked_is_gray():
+    node = _graph.Node(
+        frontmatter=validate({
+            "uid": "RM_TST", "number": 1, "kind": "work", "status": "open",
+            "title": "X", "owner": "O",
+        }),
+        path=Path("x.md"),
+    )
+    fill, _, _ = _graph._html_color(node, actionable=False)
+    assert fill == "#4a4f58"
+
+
+def test_html_color_convergence_reached_is_gold_solid():
+    node = _graph.Node(
+        frontmatter=validate({
+            "uid": "RM_TST", "number": 1, "kind": "convergence", "status": "reached",
+            "title": "X", "owner": "O",
+        }),
+        path=Path("x.md"),
+    )
+    fill, _, dash = _graph._html_color(node, actionable=False)
+    assert fill == "#b8860b"
+    assert dash == ""
+
+
+def test_html_color_convergence_wip_is_orange_dashed():
+    node = _graph.Node(
+        frontmatter=validate({
+            "uid": "RM_TST", "number": 1, "kind": "convergence", "status": "WIP",
+            "title": "X", "owner": "O",
+        }),
+        path=Path("x.md"),
+    )
+    fill, _, dash = _graph._html_color(node, actionable=False)
+    assert fill == "#a3450f"
+    assert dash != ""
+
+
+def test_render_html_contains_every_node_id_and_svg(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="Root")
+    _write_node(root, "RM_TST", 2, title="Second", depends_on=["RM_TST_001"])
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    html = _graph.render_html(nodes)
+    assert "<svg" in html and "</svg>" in html
+    assert 'data-id="RM_TST_001"' in html
+    assert 'data-id="RM_TST_002"' in html
+    assert "Root" in html and "Second" in html
+
+
+def test_render_html_edge_drawn_prerequisite_to_dependent(tmp_path: Path):
+    """The prerequisite (lower depth, RM_TST_001) must be the visual source, the dependent
+    (RM_TST_002) the visual target — reversed from export_json's raw from/to field names, which
+    are {"from": dependent, "to": prerequisite}. See BH_005's Design section."""
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="Root")
+    _write_node(root, "RM_TST", 2, title="Second", depends_on=["RM_TST_001"])
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    positions, _, _ = _graph._html_layout(nodes)
+    sx, sy, sw, sh = positions["RM_TST_001"]
+    tx, ty, tw, th = positions["RM_TST_002"]
+    expected_x1 = f"{sx + sw:g}"
+    expected_x2 = f"{tx:g}"
+
+    html = _graph.render_html(nodes)
+    # The edge path's "M{x1},{y1}" start and final "{x2},{y2}" end.
+    assert f"M{expected_x1}," in html
+    assert f" {expected_x2},{ty + th / 2:g}" in html
+
+
+def test_render_html_title_override(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="Root")
+    nodes = _graph.load_graph(root, "RM_TST")
+
+    html = _graph.render_html(nodes, title="mcRepos — FrontierMode")
+    assert "<title>mcRepos — FrontierMode</title>" in html
+    assert "<h1>mcRepos — FrontierMode</h1>" in html
+
+
+def test_render_html_frontier_banner_lists_actionable(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="Doable")
+    nodes = _graph.load_graph(root, "RM_TST")
+
+    html = _graph.render_html(nodes)
+    assert "RM_TST_001" in html
+    assert "Doable" in html
+
+
+def test_render_html_is_read_only(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    path = _write_node(root, "RM_TST", 1, title="A")
+    before = path.read_bytes()
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    _graph.render_html(nodes)
+    assert path.read_bytes() == before
 
 
 def test_load_graph_is_read_only(tmp_path: Path):

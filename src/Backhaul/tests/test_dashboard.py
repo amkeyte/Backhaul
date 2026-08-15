@@ -239,6 +239,59 @@ def test_cli_dashboard_includes_roles_when_enabled_and_configured(tmp_path: Path
     assert "0 roles" in content
 
 
+def test_cli_lint_clean_reports_ok(tmp_path: Path, capsys):
+    cfg_path = _write_config(tmp_path)
+    wiki_root = tmp_path / "backhaul" / "wiki" / "meta"
+    wiki_root.mkdir(parents=True)
+    (wiki_root / "hub.md").write_text("# Hub\n\n[Target](target.md)\n", encoding="utf-8")
+    (wiki_root / "target.md").write_text("# Target\n\n[Back](hub.md)\n", encoding="utf-8")
+
+    assert main(["--config", str(cfg_path), "lint"]) == 0
+    assert "OK: no findings." in capsys.readouterr().out
+
+
+def test_cli_lint_returns_1_and_lists_findings(tmp_path: Path, capsys):
+    cfg_path = _write_config(tmp_path)
+    wiki_root = tmp_path / "backhaul" / "wiki" / "meta"
+    wiki_root.mkdir(parents=True)
+    (wiki_root / "lonely.md").write_text("# Lonely\n", encoding="utf-8")
+
+    assert main(["--config", str(cfg_path), "lint"]) == 1
+    out = capsys.readouterr().out
+    assert "orphaned" in out
+    assert "lonely.md" in out
+
+
+def test_cli_lint_check_flag_scopes_to_one_check(tmp_path: Path, capsys):
+    cfg_path = _write_config(tmp_path)
+    wiki_root = tmp_path / "backhaul" / "wiki" / "meta"
+    wiki_root.mkdir(parents=True)
+    (wiki_root / "page.md").write_text("# Page\n\n[Missing](nope.md)\n", encoding="utf-8")
+
+    assert main(["--config", str(cfg_path), "lint", "--check", "links"]) == 1
+    out = capsys.readouterr().out
+    assert "links:" in out
+    assert "orphaned:" not in out
+
+
+def test_cli_lint_format_json(tmp_path: Path, capsys):
+    cfg_path = _write_config(tmp_path)
+    wiki_root = tmp_path / "backhaul" / "wiki" / "meta"
+    wiki_root.mkdir(parents=True)
+    (wiki_root / "lonely.md").write_text("# Lonely\n", encoding="utf-8")
+
+    assert main(["--config", str(cfg_path), "lint", "--format", "json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert isinstance(payload, list)
+    assert payload[0]["check"] == "orphaned"
+
+
+def test_cli_lint_unknown_check_fails_loud(tmp_path: Path, capsys):
+    cfg_path = _write_config(tmp_path)
+    assert main(["--config", str(cfg_path), "lint", "--check", "not-a-check"]) == 2
+    assert "unknown check" in capsys.readouterr().err
+
+
 def test_cli_projects_lists_registered(tmp_path: Path, monkeypatch, capsys):
     registry_path = tmp_path / "projects.json"
     registry_path.write_text(json.dumps({"alpha": "a.json"}), encoding="utf-8")

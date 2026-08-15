@@ -3,13 +3,13 @@ id: BH_004
 uid: BH
 number: 4
 client: BH
-status: open
+status: done
 title: Port doc-lint into Backhaul as bhw lint
 context: Generalize LunaFlow's doc-lint.py into a project-agnostic lint command. See
   ticket body.
 priority: low
 opened: '2026-08-13'
-closed: null
+closed: '2026-08-14'
 ---
 
 ## Summary
@@ -82,6 +82,42 @@ Suggested shape (not a full design -- flagging the direction, not committing to 
 Priority: low -- future feature, not blocking anything currently in flight. Filed to capture the
 idea before it's forgotten, not as a commitment to build it soon.
 
+## Design (locked 2026-08-14)
+
+Command home: **`backhaul lint`**, not `bhw lint` — cross-service on purpose, since both v1
+checks below need to walk tickets/wiki/roadmap/roles together, not just wiki content. Lives in
+`backhaul/cli.py` alongside `dashboard`/`projects`.
+
+V1 checks — exactly the two the ticket's own analysis flagged as directly portable, nothing
+LunaFlow-specific:
+1. **Orphaned pages** — any `.md` file under an enabled content root that nothing else links
+   to. Exempt: the generated entry points (`BOARD.md`, `WIKI_INDEX.md`, `ROADMAP_INDEX.md`,
+   `ROLES_INDEX.md`, `BACKHAUL.md`).
+2. **Broken links** — a relative markdown link whose target doesn't resolve from the linking
+   file. Skips `http(s)://`, `mailto:`, `editmd:`, `openfolder:`, `claude:` — none of those are
+   local paths to check.
+
+Status-drift, missing-Decision, and deprecation-marker checks (LunaFlow-specific, no direct
+Backhaul equivalent per the ticket's own analysis) are explicitly out of scope for v1, not
+forgotten.
+
+Implementation: new `foundation/lint.py`, stdlib-only, no new dependency. Walks every content
+root this project's config has (not just wiki), respects `--project`/`--config` like the rest
+of the CLI. `--check <name>`, `--format text|json`, exit 0 (clean) / 1 (findings) / 2 (script
+error) — same convention as the source tool. No auto-fix — deciding where to link an orphan
+from is an editorial call, not a mechanical one.
+
+Scope: `foundation/lint.py` (new), `backhaul/cli.py` (new `lint` subcommand), tests (fixture
+content root with a deliberate orphan + a deliberate broken link + a clean control set,
+asserting exact findings), `wiki/meta/bhw.md` or a new `wiki/meta/backhaul.md` cheatsheet entry.
+
 ## Log
 
 - 2026-08-13: Ticket opened.
+- 2026-08-14: Design locked — see Design section above. Not yet implemented.
+- 2026-08-14: Implemented per the Design section — `foundation/lint.py`, `backhaul lint`
+  subcommand, tests (`tests/test_lint.py`, CLI tests in `tests/test_dashboard.py`), docs
+  (`wiki/meta/backhaul.md`, new). Full suite green (296 passed). Closed.
+<!-- bh-header:start -->
+**Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_local/source/Backhaul)
+<!-- bh-header:end -->

@@ -8,10 +8,12 @@ and `projects` (list what's registered in config/projects.json).
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from backhaul.foundation import config as _config
+from backhaul.foundation import lint as _lint
 from backhaul.foundation import projects as _projects
 
 from . import dashboard as _dashboard
@@ -85,6 +87,28 @@ def _cmd_dashboard(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_lint(args: argparse.Namespace) -> int:
+    cfg = _config.load_config(_resolve_config_path(args))
+    checks = [c.strip() for c in args.check.split(",") if c.strip()] if args.check else None
+
+    try:
+        findings = _lint.run_lint(cfg, checks=checks)
+    except _lint.LintError as e:
+        print(f"FAIL: {e}", file=sys.stderr)
+        return 2
+
+    if args.format == "json":
+        print(json.dumps([f.to_dict() for f in findings], indent=2))
+    else:
+        if not findings:
+            print("OK: no findings.")
+        else:
+            for f in findings:
+                print(str(f))
+
+    return 1 if findings else 0
+
+
 def _cmd_projects(args: argparse.Namespace) -> int:
     known = _projects.load_projects(_PROJECTS_PATH)
     if not known:
@@ -105,6 +129,14 @@ def main(argv: list[str] | None = None) -> int:
     p_dash = sub.add_parser("dashboard", help="Rebuild BACKHAUL.md (links to the board + wiki index).")
     p_dash.add_argument("--output", default=None, help="Defaults to the backhaul data folder's parent / BACKHAUL.md.")
     p_dash.set_defaults(func=_cmd_dashboard)
+
+    p_lint = sub.add_parser("lint", help="Audit content for orphaned pages and broken links.")
+    p_lint.add_argument(
+        "--check", default=None,
+        help=f"Comma-separated check names to run (default: all). Known: {', '.join(_lint.CHECKS)}.",
+    )
+    p_lint.add_argument("--format", default="text", choices=["text", "json"], help="Output format.")
+    p_lint.set_defaults(func=_cmd_lint)
 
     p_proj = sub.add_parser("projects", help="List registered projects (config/projects.json).")
     p_proj.set_defaults(func=_cmd_projects)

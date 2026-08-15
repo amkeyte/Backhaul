@@ -62,6 +62,27 @@ next time they're touched, not urgent enough to warrant a dedicated pass on its 
 - **convergence**: `WIP` <-> `reached` (reversible — a milestone can un-converge on real
   evidence of a gap, with a `ReachedLog` recording every time it was reached, never erased).
 
+## HTML graph view (bhrm render-html)
+
+`bhrm render-html --uid RM_XXX [--output PATH] [--title "..."]` generates a standalone,
+self-contained HTML/SVG view of one UID's graph — no external assets, no network calls, safe to
+open as a local file. A real, data-driven successor to the original hand-laid-out mockup this
+was ported from (`intake/roadmap-nodes/design/Mockups/sample-visualization.html`).
+
+Layout: nodes are laid out left to right by `_depth()` (the same longest-path-from-root value
+`render`'s markdown indentation already uses), top to bottom within a layer ordered by node ID —
+deterministic, same graph always produces byte-identical output. Color: five buckets lifted from
+the mockup's own legend — work/resolved-or-superseded green, work/open-and-actionable blue,
+work/open-and-blocked gray, convergence/reached gold solid border, convergence/WIP orange dashed
+border. Supports `?focus=RM_XXX_NNN` in the URL — highlights and scrolls to that node on load,
+same behavior the mockup proved against real pilot data.
+
+**The `Visualize` line from the original node-format-spec.md is deliberately not wired in yet.**
+Doing so would mean `render`/`index` need to know where a generated HTML file actually lives (a
+new `--html-path` or a location convention) — extra cross-command coupling not worth taking on
+until a real project has an HTML view checked in somewhere. `render-html` ships standalone for
+now; that wiring is a natural follow-up once there's a real answer to "where does it live."
+
 ## CLI cheatsheet
 
 ```
@@ -70,6 +91,7 @@ bhrm validate --uid RM_XXX
 bhrm frontier --uid RM_XXX
 bhrm dependents <ID>   |   bhrm downstream <ID>   |   bhrm blocking <ID>
 bhrm render --uid RM_XXX [--output PATH] [--title "..."]
+bhrm render-html --uid RM_XXX [--output PATH] [--title "..."]
 bhrm export-json --uid RM_XXX [--out PATH]
 bhrm index [--output PATH] [--title "..."]    # every UID's graph, its own section
 bhrm projects
@@ -83,3 +105,4 @@ refuses to run if `"roadmap"` isn't in that project's `enabled_modules`.
 - [BHT — Ticket Conventions](../meta/bht.md)
 - [BHW — Wiki Conventions](../meta/bhw.md)
 - [BHRole — Agent Role Conventions](../meta/bhrole.md)
+- [Backhaul — Cross-Service Command Conventions](../meta/backhaul.md)

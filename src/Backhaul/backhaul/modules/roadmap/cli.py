@@ -195,6 +195,19 @@ def _cmd_render(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_render_html(args: argparse.Namespace) -> int:
+    cfg = _load_enabled_config(args)
+    nodes = _load_graph_for_uid(cfg, args.uid)
+    kwargs = {"title": args.title} if args.title else {}
+    text = _graph.render_html(nodes, **kwargs)
+    if args.output:
+        Path(args.output).write_text(text, encoding="utf-8")
+        print(f"OK: wrote render-html to {args.output}")
+    else:
+        print(text, end="")
+    return 0
+
+
 def _cmd_export_json(args: argparse.Namespace) -> int:
     cfg = _load_enabled_config(args)
     nodes = _load_graph_for_uid(cfg, args.uid)
@@ -314,6 +327,12 @@ def main(argv: list[str] | None = None) -> int:
     p_render.add_argument("--output", default=None, help="Write to this path instead of stdout.")
     p_render.add_argument("--title", default=None, help='Override the top heading. Defaults to "# Roadmap Graph — generated index".')
     p_render.set_defaults(func=_cmd_render)
+
+    p_render_html = sub.add_parser("render-html", help="Generate a standalone HTML/SVG graph view for one UID.")
+    p_render_html.add_argument("--uid", required=True)
+    p_render_html.add_argument("--output", default=None, help="Write to this path instead of stdout.")
+    p_render_html.add_argument("--title", default=None, help='Override the page title. Defaults to "Roadmap Graph".')
+    p_render_html.set_defaults(func=_cmd_render_html)
 
     p_export = sub.add_parser("export-json", help="Export one UID's graph as structured JSON.")
     p_export.add_argument("--uid", required=True)
