@@ -685,6 +685,25 @@ def test_build_index_custom_title(tmp_path: Path):
     assert out.read_text(encoding="utf-8").startswith("# mcRepos Roadmaps")
 
 
+# --- Node.slug ---------------------------------------------------------------------------------
+
+
+def test_node_slug_extracted_from_filename(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="Something", slug="betty")
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    assert nodes["RM_TST_001"].slug == "betty"
+
+
+def test_node_slug_empty_when_filename_is_id_only(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="Something")  # no slug passed to the fixture helper
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    assert nodes["RM_TST_001"].slug == ""
+
+
 # --- render_html -----------------------------------------------------------------------------
 
 
@@ -792,6 +811,28 @@ def test_html_color_convergence_wip_is_orange_dashed():
     assert dash != ""
 
 
+def test_render_html_shows_slug_bold_after_id_label(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="Border mutation validation hardening", slug="betty")
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    html = _graph.render_html(nodes)
+    assert '<text x="' in html
+    assert 'class="node-label">RM_TST_001 <tspan class="node-slug">betty</tspan></text>' in html
+    # Also surfaced in the hover tooltip, not just the visible label.
+    assert "RM_TST_001 · betty —" in html
+
+
+def test_render_html_omits_slug_tspan_when_node_has_none(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="No slug here")  # ID-only filename
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    html = _graph.render_html(nodes)
+    assert "<tspan" not in html
+    assert 'class="node-label">RM_TST_001</text>' in html
+
+
 def test_render_html_contains_every_node_id_and_svg(tmp_path: Path):
     root = tmp_path / "roadmap"
     _write_node(root, "RM_TST", 1, title="Root")
@@ -854,6 +895,61 @@ def test_render_html_is_read_only(tmp_path: Path):
     nodes = _graph.load_graph(root, "RM_TST")
     _graph.render_html(nodes)
     assert path.read_bytes() == before
+
+
+# --- build_index's unconditional HTML rebuild (BH_008) ------------------------------------
+
+
+def test_build_index_writes_html_even_when_none_existed_before(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_FRO", 1, title="FM root")
+
+    out = tmp_path / "ROADMAP_INDEX.md"
+    html_path = tmp_path / _graph.html_graph_filename("RM_FRO")
+    assert not html_path.exists()
+
+    _graph.build_index(root, out)
+    assert html_path.exists()
+    assert "<svg" in html_path.read_text(encoding="utf-8")
+
+
+def test_build_index_overwrites_existing_html_with_current_graph(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_FRO", 1, title="FM root")
+    out = tmp_path / "ROADMAP_INDEX.md"
+    html_path = tmp_path / _graph.html_graph_filename("RM_FRO")
+
+    _graph.build_index(root, out)
+    assert 'data-id="RM_FRO_002"' not in html_path.read_text(encoding="utf-8")
+
+    _write_node(root, "RM_FRO", 2, title="Second", depends_on=["RM_FRO_001"])
+    _graph.build_index(root, out)
+    assert 'data-id="RM_FRO_002"' in html_path.read_text(encoding="utf-8")
+
+
+def test_build_index_links_its_own_freshly_written_html_same_run(tmp_path: Path):
+    """The Graph view link in the markdown index must reflect *this* call's HTML write, not a
+    stale existence-check from before it — regression guard for the ordering (HTML written
+    before render_index() runs, not after)."""
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_FRO", 1, title="FM root")
+    out = tmp_path / "ROADMAP_INDEX.md"
+
+    _graph.build_index(root, out)
+    content = out.read_text(encoding="utf-8")
+    assert "**Graph view:** [Open in browser ↗](ROADMAP_GRAPH_RM_FRO.html)" in content
+
+
+def test_build_index_raises_on_invalid_graph_instead_of_skipping(tmp_path: Path):
+    """A UID whose graph fails to load/validate must abort the whole call, not be silently
+    skipped — per the project owner, this is the intended way a broken graph surfaces."""
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_FRO", 1, title="A", depends_on=["RM_FRO_002"])
+    _write_node(root, "RM_FRO", 2, title="B", depends_on=["RM_FRO_001"])  # cycle
+
+    out = tmp_path / "ROADMAP_INDEX.md"
+    with pytest.raises(_graph.GraphError):
+        _graph.build_index(root, out)
 
 
 def test_load_graph_is_read_only(tmp_path: Path):

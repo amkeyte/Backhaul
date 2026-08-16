@@ -77,15 +77,31 @@ work/open-and-blocked gray, convergence/reached gold solid border, convergence/W
 border. Supports `?focus=RM_XXX_NNN` in the URL — highlights and scrolls to that node on load,
 same behavior the mockup proved against real pilot data.
 
-**`bhrm index` links to a generated HTML view automatically, if one exists.** `render_index()`
-checks for `ROADMAP_GRAPH_<uid>.html` (e.g. `ROADMAP_GRAPH_RM_FRO.html`) sitting next to
-`ROADMAP_INDEX.md` itself, and adds a `**Graph view:** [Open in browser ↗]` line under that
-UID's section when it finds one — pure filesystem-existence check, no new config or CLI flag.
-`render-html --output` is still fully user-controlled (default: stdout) — using this
-conventional filename is what makes the link appear, not a requirement. The full `Visualize`
-line from the original node-format-spec.md (wired into every node's own header, not just the
-index) is still deliberately not built — a narrower version of that idea, scoped to the index
-only, is what shipped here.
+**Slug shown bold, after the ID, in each node's label (BH_009).** Not a new stored field — a
+node's slug already lives in its own filename (`<ID>_<slug>.md`, set via `--slug` at `bhrm new`
+or defaulted from the title), and `Node.slug` just reads it back from `self.path.name`. Lets a
+human reference a node meaningfully ("the Betty node") instead of only by its `RM_FRO_011`-style
+ID. Omitted entirely for the rare node whose filename has no slug part.
+
+**`bhrm index`/`bhrm refresh` unconditionally rewrite every UID's HTML view, every run.** Not
+gated on whether `ROADMAP_GRAPH_<uid>.html` already existed — every `index`/`refresh` call is a
+full rebuild of both the markdown index and every discovered UID's HTML graph view, using the
+conventional filename (`html_graph_filename(uid)`, e.g. `ROADMAP_GRAPH_RM_FRO.html`), same
+directory as `ROADMAP_INDEX.md`. `render-html --output` is still available and fully
+user-controlled for a one-off render elsewhere, but the index routine no longer needs it —
+running `bhrm index`/`refresh` is enough to keep both current (BH_008). `render_index()` then
+links to that freshly-written file — `**Graph view:** [Open in browser ↗]` under that UID's
+section — since the HTML is written before the markdown index is rendered in the same call.
+
+**A UID whose graph fails to load or validate aborts the whole `index`/`refresh` call — on
+purpose.** No partial-failure or skip-and-continue mode: per the project owner, a broken graph
+should surface loudly as part of the normal index/refresh routine, the same way it already
+surfaces inside `render_index()` itself — this is the mechanism for finding invalid roadmap
+state, not something to route around.
+
+The full `Visualize` line from the original node-format-spec.md (wired into every node's own
+header, not just the index) is still deliberately not built — a narrower version of that idea,
+scoped to the index only, is what shipped here.
 
 ## Convergence-bypass check (advisory)
 

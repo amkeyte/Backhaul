@@ -128,3 +128,6 @@ Priority: low -- exploratory/advisory tooling, not blocking anything currently i
   excluded, genuine bypass flagged) plus a no-convergence-nodes empty case, in
   `tests/test_roadmap.py`; CLI tests in `tests/test_roadmap_cli.py`. Docs: `wiki/meta/bhrm.md`.
   Full suite green (310 passed). Closed.
+<!-- bh-header:start -->
+**Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_local/source/Backhaul)
+<!-- bh-header:end -->

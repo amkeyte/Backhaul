@@ -72,6 +72,19 @@ class Node:
     def depends_on(self) -> list[str]:
         return self.frontmatter.depends_on
 
+    @property
+    def slug(self) -> str:
+        """The human-chosen mnemonic from this node's own filename (`<ID>_<slug>.md`) — not a
+        stored frontmatter field, on purpose: the filename already asserts it durably (every
+        node gets one, `--slug` or the slugified title, see create.py), and a second,
+        independently-editable slug field would just be a second place for the value to drift
+        from what the filename says — the exact dual-write risk this codebase avoids everywhere
+        else (Required By, Visualize: computed, never stored). Empty string only for the rare
+        filename that ends up ID-only (a title that slugifies to nothing)."""
+        stem = self.path.stem
+        prefix = f"{self.id}_"
+        return stem[len(prefix):] if stem.startswith(prefix) else ""
+
 
 # ---------------------------------------------------------------------------
 # Loading
@@ -435,10 +448,31 @@ def build_index(
     project_name: str = "Backhaul",
 ) -> None:
     """Render every UID's graph under nodes_root and write the combined index. Regenerated
-    wholesale on every run, same as BOARD.md/WIKI_INDEX.md — always overwrites output_path."""
+    wholesale on every run, same as BOARD.md/WIKI_INDEX.md — always overwrites output_path.
+
+    Also unconditionally rewrites every discovered UID's HTML graph view
+    (`ROADMAP_GRAPH_<uid>.html`, same directory as output_path) first, before rendering the
+    markdown index itself — deliberate per the project owner (BH_008): every `bhrm index`/
+    `refresh` call is a full rebuild of both, not just the markdown, and never gated on whether
+    an HTML file already existed. Doing HTML first (not after) means render_index()'s own
+    "Graph view" link — which checks html_graph_filename(uid) for existence — reflects *this*
+    run's freshly-written file, not a stale one from before this call. A UID whose graph fails
+    to load or validate raises here and aborts the whole call, same as it already would inside
+    render_index() itself — per the project owner, that failure is the intended way a broken
+    graph gets surfaced, not something to route around or skip past.
+    """
     output_path = Path(output_path)
+    nodes_root = Path(nodes_root)
+    output_dir = output_path.parent
+
+    for uid in discover_uids(nodes_root):
+        nodes = load_graph(nodes_root, uid)
+        validate_graph(nodes)
+        html = render_html(nodes, title=f"{project_name} — {uid} Roadmap")
+        filesafety.safe_write(output_dir / html_graph_filename(uid), html, overwrite=True)
+
     content = render_index(
-        nodes_root, title=title, output_dir=output_path.parent,
+        nodes_root, title=title, output_dir=output_dir,
         dashboard_path=dashboard_path, project_name=project_name,
     )
     filesafety.safe_write(output_path, content, overwrite=True)
@@ -560,6 +594,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   .frontier-banner {{ background: #123b2a; border: 1px solid #2e7d4a; color: #a6f2c9; padding: 8px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }}
   svg {{ background: #1b1e24; border-radius: 8px; border: 1px solid #2a2e36; }}
   .node-label {{ font-size: 11px; fill: #f2f2f2; font-weight: 600; }}
+  .node-slug {{ font-weight: 700; fill: #ffe066; }}
   .node-sub {{ font-size: 9px; fill: #cfd3d8; }}
   .edge {{ stroke: #5a6270; stroke-width: 1.4; fill: none; marker-end: url(#arrow); }}
   .focus-banner {{ display: none; padding: 8px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }}
@@ -641,15 +676,18 @@ def render_html(nodes: dict[str, Node], *, title: str = "Roadmap Graph") -> str:
         fill, stroke, dash = _html_color(node, entry["actionable"])
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
         label = _xml_escape(node.id)
+        slug = _xml_escape(node.slug)
+        slug_tspan = f' <tspan class="node-slug">{slug}</tspan>' if slug else ""
         name = _xml_escape(node.title)
         status_tag = _xml_escape(f"{node.kind} · {node.status}")
+        tooltip_slug = f" · {slug}" if slug else ""
         node_svg.append(
             f'<g class="node-group" data-id="{node.id}">'
             f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="6" '
             f'fill="{fill}" stroke="{stroke}" stroke-width="2"{dash_attr}/>'
-            f'<text x="{x + 10:g}" y="{y + 18:g}" class="node-label">{label}</text>'
+            f'<text x="{x + 10:g}" y="{y + 18:g}" class="node-label">{label}{slug_tspan}</text>'
             f'<text x="{x + 10:g}" y="{y + 32:g}" class="node-sub">{name}</text>'
-            f"<title>{label} — {status_tag}. {name}</title>"
+            f"<title>{label}{tooltip_slug} — {status_tag}. {name}</title>"
             f"</g>"
         )
 

@@ -153,6 +153,27 @@ def test_render_html_title_flag(tmp_path: Path):
     assert "<title>Custom Title</title>" in out_path.read_text(encoding="utf-8")
 
 
+def test_index_command_writes_html_unconditionally(tmp_path: Path):
+    """No separate render-html call needed — bhrm index writes ROADMAP_GRAPH_<uid>.html on its
+    own now (BH_008)."""
+    cfg_path = _write_config(tmp_path)
+    main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "X", "--owner", "Arryn"])
+
+    assert main(["--config", str(cfg_path), "index"]) == 0
+    html_path = tmp_path / "content" / "ROADMAP_GRAPH_RM_ARR.html"
+    assert html_path.exists()
+    assert "<svg" in html_path.read_text(encoding="utf-8")
+
+
+def test_refresh_command_writes_html_unconditionally(tmp_path: Path):
+    cfg_path = _write_config(tmp_path)
+    main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "X", "--owner", "Arryn"])
+
+    assert main(["--config", str(cfg_path), "refresh"]) == 0
+    html_path = tmp_path / "content" / "ROADMAP_GRAPH_RM_ARR.html"
+    assert html_path.exists()
+
+
 def test_index_links_generated_html_graph_view(tmp_path: Path):
     cfg_path = _write_config(tmp_path)
     main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "X", "--owner", "Arryn"])

@@ -354,14 +354,17 @@ def main(argv: list[str] | None = None) -> int:
     p_export.add_argument("--out", default=None, help="Write JSON to this file instead of stdout.")
     p_export.set_defaults(func=_cmd_export_json)
 
-    p_index = sub.add_parser("index", help="Rebuild the combined roadmap index — every UID's graph, its own section.")
+    p_index = sub.add_parser(
+        "index",
+        help="Rebuild the combined roadmap index and every UID's HTML graph view (unconditionally regenerated).",
+    )
     p_index.add_argument("--output", default=None, help="Defaults to <nodes_root's parent>/ROADMAP_INDEX.md.")
     p_index.add_argument("--title", default=None, help='Override the top heading. Defaults to "# Roadmap Graphs".')
     p_index.set_defaults(func=_cmd_index)
 
     p_refresh = sub.add_parser(
         "refresh",
-        help="Recompute every node's header and rebuild the index against this machine's real paths.",
+        help="Recompute every node's header and rebuild the index + every UID's HTML graph view against this machine's real paths.",
     )
     p_refresh.set_defaults(func=_cmd_refresh)
 
