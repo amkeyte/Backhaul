@@ -1,10 +1,8 @@
 <!-- bh-header:start -->
-**Backhaul**
+**Fronthaul**
 <!-- bh-header:end -->
 
 # Backhaul
 
-- [Work Board](backhaul/BOARD.md) — 2 open tickets
+- [Work Board](backhaul/BOARD.md) — 14 open tickets
 - [Wiki Index](backhaul/WIKI_INDEX.md) — 14 pages
-- [Roadmap](backhaul/ROADMAP_INDEX.md) — 0 graphs, 0 actionable nodes
-- [Team](backhaul/ROLES_INDEX.md) — 1 role
