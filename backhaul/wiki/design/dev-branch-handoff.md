@@ -46,13 +46,24 @@ Two batches, back to back, both starting from real usage rather than speculative
    to all five CLIs, and locked the convention in
    [Version & Branch Identification Convention](version-branch-convention.md). See that page for
    the mechanism; see BH_026's own ticket for the before/after.
+4. **BH_027 — shortcuts module crashed test collection without `pylnk3`.** Found by an agent
+   actually running [Dev Branch Test Checklist](dev-branch-test-checklist.md) on a fresh machine
+   — `pip install -e "src/Backhaul[dev]"` (this checklist's own step 3) doesn't pull in `pylnk3`
+   (a separate `shortcuts` extra), but `backhaul.modules.shortcuts`'s `__init__.py` imported it
+   eagerly, so `test_smoke.py`'s bare `import backhaul.modules.shortcuts` aborted pytest
+   collection entirely — not a single failing test, nothing ran. `docx` already deferred its own
+   optional heavy import the same way; `shortcuts` just hadn't followed that pattern. Fixed by
+   moving `import pylnk3` into the two functions that actually touch it (`build()`/`verify()` in
+   `lnk.py`), same shape `docx` already had. First real proof the checklist catches things a
+   same-machine dogfooding session can't — this repo's own sandbox happened to already have
+   `pylnk3` installed, so 408 tests passing here never surfaced it.
 
 Every ticket's own `## Log` section has the specific before/after and what was tested — this
 page is an index into those, not a replacement for reading one when the detail matters.
 
 ## Status
 
-- Full suite: 408 passing, 0 failing. Run it yourself before trusting this:
+- Full suite: 409 passing, 0 failing. Run it yourself before trusting this:
   `cd src/Backhaul && python3 -m pytest -q`.
 - `backhaul refresh` has been run against this repo's own real content (not just synthetic test
   fixtures) — `BOARD.md`/`BACKHAUL.md` are current. Only BH_025 is open.

@@ -36,8 +36,17 @@ around it.
 4. `pip show backhaul` — confirm **Version: 0.2.0.dev0**, not `0.1.0`. If it still says `0.1.0`,
    the install picked up stale cached metadata; `pip uninstall backhaul` and reinstall before
    continuing, since everything below assumes this is current.
-5. `cd src/Backhaul && python3 -m pytest -q` — expect **408 passed, 0 failed**. Do not proceed
+5. `cd src/Backhaul && python3 -m pytest -q` — expect **409 passed, 0 failed** (1 skipped is also
+   fine here — that's `test_shortcuts.py` cleanly skipping itself if `pylnk3` isn't installed,
+   not an error; see BH_027 below if you instead see a collection-time error). Do not proceed
    past a failure here; nothing below is meaningful on top of a red suite.
+
+   **If step 5 instead shows `1 skipped, 1 error` with pytest aborting collection entirely**:
+   this was a real bug (BH_027, fixed 2026-08-31) — `backhaul.modules.shortcuts` used to `import
+   pylnk3` at module level even though `pylnk3` is a separate `shortcuts` extra, not part of
+   `dev`, so the exact install command in step 3 couldn't pass step 5 as written. If you're
+   seeing this, you're testing a commit from before the fix — pull latest `dev` and retry rather
+   than working around it by installing `pylnk3` yourself.
 
 ## 2. Version & branch identification (BH_026) — the actual point of this checklist
 

@@ -19,7 +19,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-import pylnk3
+# pylnk3 is deliberately NOT imported at module level: it's an optional dependency
+# (pyproject.toml's `shortcuts` extra, not part of `dev`), and this module is reachable via
+# `backhaul.modules.shortcuts`'s eager `from .lnk import ...` re-export (see that package's
+# __init__.py) — so a bare `import backhaul.modules.shortcuts`, e.g. test_smoke.py's "does the
+# package structure import cleanly" check, must succeed without pylnk3 installed. Only `build()`
+# and `verify()` actually touch pylnk3, so each imports it locally, raising the normal
+# ImportError with pylnk3's own install hint only if someone actually tries to build/verify a
+# .lnk without the extra installed. Matches `modules/docx`'s existing pattern (its own heavy
+# import is deferred to whichever submodule actually needs it) — `shortcuts` just hadn't
+# followed it. See BH_027.
 
 TargetType = Literal["folder", "file"]
 
@@ -43,6 +52,8 @@ class LnkSpec:
 
 def build(spec: LnkSpec) -> pylnk3.Lnk:
     """Build and save a .lnk file per spec, with corrected FOLDER/FILE segment typing."""
+    import pylnk3
+
     out_path = str(spec.out)
     if not out_path.lower().endswith(".lnk"):
         out_path += ".lnk"
@@ -86,6 +97,8 @@ def build(spec: LnkSpec) -> pylnk3.Lnk:
 
 def verify(out_path: str | Path, expected_target: str, expect_all_folder: bool) -> tuple[bool, list[str]]:
     """Re-parse a built .lnk and confirm the embedded target and segment typing are correct."""
+    import pylnk3
+
     lnk = pylnk3.parse(str(out_path))
     ok = True
     problems: list[str] = []
