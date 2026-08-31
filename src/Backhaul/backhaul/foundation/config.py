@@ -2,9 +2,10 @@
 
 Every script reads a gitignored `config.local.json` fresh on each invocation — no reliance
 on env vars or cwd persistence, since the sandbox does not carry either between calls. One
-deliberate exception: BACKHAUL_LOCAL_ROOT (see load_config's docstring) — a per-*session*, not
-per-machine, override, which is exactly why it belongs in an env var rather than the
-per-machine config.local.json file.
+deliberate exception: BACKHAUL_LOCAL_ROOT — a per-*session*, not per-machine, override, which is
+exactly why it belongs in an env var rather than the per-machine config.local.json file. As of
+BH_028, `load_config()` itself no longer reads that env var implicitly (see its own docstring
+for why); each CLI's own `_load_config()` helper reads it and passes it through explicitly.
 
 See migration/MIGRATION_PLAN.md §6 (config + versioning design) and
 migration/PYTHON_PROJECT_SETUP.md for the resolved layout this reads from
@@ -83,15 +84,25 @@ def load_config(config_path: str | Path, *, local_root: str | None = None) -> di
     check against config/config.schema.json (required keys only — full JSON Schema
     validation is planned but not yet implemented here).
 
-    `local_root`, if given (or, when omitted, read from the BACKHAUL_LOCAL_ROOT environment
-    variable — see that constant's docstring for why an env var and not a config field), tells
-    this call where the project's true root actually lives on *this* process's own filesystem,
-    and every content_roots value gets remapped onto it before anything else happens —
-    specifically so a role's Cowork sandbox, which can't do file I/O against content_roots
-    written as the real machine's Windows paths, can point this one call/session at wherever
-    it's actually mounted here instead. The absolute-path check below then validates the
-    *remapped* values, so a config that would otherwise be rejected as unusable on this
-    machine loads and works correctly once local_root corrects it.
+    `local_root`, if given, tells this call where the project's true root actually lives on
+    *this* process's own filesystem, and every content_roots value gets remapped onto it before
+    anything else happens — specifically so a role's Cowork sandbox, which can't do file I/O
+    against content_roots written as the real machine's Windows paths, can point this one
+    call/session at wherever it's actually mounted here instead. The absolute-path check below
+    then validates the *remapped* values, so a config that would otherwise be rejected as
+    unusable on this machine loads and works correctly once local_root corrects it.
+
+    Deliberately does NOT fall back to reading the BACKHAUL_LOCAL_ROOT environment variable
+    itself (it did, until BH_028) — this function is a pure config-loading primitive that tests
+    call directly with synthetic tmp_path configs, and remapping is not something a test fixture
+    ever wants applied to it just because the ambient shell happened to have that env var
+    exported (e.g. a dev session running `backhaul refresh` and `pytest` back to back). Reading
+    BH_028's incident: exactly that combination silently redirected several tests' own tmp_path
+    content_roots onto this repo's real, tracked `content/` and `Fronthaul/` fixture data,
+    corrupting 125 tracked files across two full-suite runs before anyone noticed. Production CLI
+    entry points now read the env var themselves and pass it explicitly — see each cli.py's own
+    `_load_config()` helper — so only a real invocation of the actual CLI is ever affected by it;
+    a bare call to this function never is, regardless of what's set in the process environment.
     """
     p = Path(config_path)
     if not p.is_file():
@@ -131,8 +142,6 @@ def load_config(config_path: str | Path, *, local_root: str | None = None) -> di
     if missing_roots:
         raise ConfigError(f"{p}: content_roots missing required key(s): {', '.join(missing_roots)}")
 
-    if local_root is None:
-        local_root = os.environ.get(LOCAL_ROOT_ENV_VAR)
     if local_root:
         content_roots = _remap_content_roots(content_roots, local_root)
         config["content_roots"] = content_roots

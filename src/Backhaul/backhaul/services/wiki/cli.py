@@ -8,6 +8,7 @@ persisted cwd. Mirrors backhaul.services.ticket.cli's structure.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -34,6 +35,18 @@ def _resolve_config_path(args: argparse.Namespace) -> Path:
     )
 
 
+def _load_config(config_path: str | Path) -> dict:
+    """Load a config, applying BACKHAUL_LOCAL_ROOT from this process's own environment if set.
+
+    The one place in this CLI that reads that env var (see BH_028) — `foundation.config
+    .load_config()` itself deliberately doesn't anymore, so every other call to it (including
+    every test's own synthetic config) is unaffected by whatever happens to be exported in the
+    ambient shell. Real CLI invocations go through here instead — including `seed-meta`'s
+    second, source-project config load, since that's also a real filesystem read this process
+    might need re-rooted."""
+    return _config.load_config(config_path, local_root=os.environ.get(_config.LOCAL_ROOT_ENV_VAR))
+
+
 def _wiki_root(cfg: dict) -> Path:
     return Path(cfg["content_roots"]["wiki"])
 
@@ -51,7 +64,7 @@ def _dashboard_path(wiki_root: Path) -> Path:
 
 
 def _cmd_new(args: argparse.Namespace) -> int:
-    cfg = _config.load_config(_resolve_config_path(args))
+    cfg = _load_config(_resolve_config_path(args))
     wiki_root = _wiki_root(cfg)
     path = _create.create_page(
         wiki_root=wiki_root,
@@ -76,7 +89,7 @@ def _cmd_new(args: argparse.Namespace) -> int:
 
 
 def _cmd_index(args: argparse.Namespace) -> int:
-    cfg = _config.load_config(_resolve_config_path(args))
+    cfg = _load_config(_resolve_config_path(args))
     wiki_root = _wiki_root(cfg)
     out = Path(args.output) if args.output else _index_path(wiki_root)
     kwargs: dict = {
@@ -100,7 +113,7 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
     (a different checkout path, or a dev sandbox) by recomputing them against this machine's
     real, resolved paths.
     """
-    cfg = _config.load_config(_resolve_config_path(args))
+    cfg = _load_config(_resolve_config_path(args))
     wiki_root = _wiki_root(cfg)
     index_path = _index_path(wiki_root)
     dashboard_path = _dashboard_path(wiki_root)
@@ -132,11 +145,11 @@ def _cmd_seed_meta(args: argparse.Namespace) -> int:
     """Install the canonical module-usage pages (maintained as real wiki content in the
     "backhaul" project itself — see that project's own meta/ pages) into this project's wiki.
     Additive only: never overwrites a page that already exists here."""
-    cfg = _config.load_config(_resolve_config_path(args))
+    cfg = _load_config(_resolve_config_path(args))
     wiki_root = _wiki_root(cfg)
 
     source_cfg_path = _projects.resolve_project_config(_PROJECTS_PATH, args.source_project)
-    source_cfg = _config.load_config(source_cfg_path)
+    source_cfg = _load_config(source_cfg_path)
     source_wiki_root = _wiki_root(source_cfg)
 
     try:

@@ -57,14 +57,29 @@ Two batches, back to back, both starting from real usage rather than speculative
    `lnk.py`), same shape `docx` already had. First real proof the checklist catches things a
    same-machine dogfooding session can't — this repo's own sandbox happened to already have
    `pylnk3` installed, so 408 tests passing here never surfaced it.
+5. **BH_028 — `BACKHAUL_LOCAL_ROOT` leaked into test configs.** Real, self-inflicted incident,
+   not found by an outside agent this time: running `export BACKHAUL_LOCAL_ROOT=...` and `pytest`
+   in the same shell (the normal workflow this whole session used) silently redirected several
+   tests' own tmp_path content_roots onto this repo's real, tracked `content/`/`Fronthaul/`
+   fixture directories, because `load_config()` read that env var implicitly for *any* config it
+   loaded, not just real ones. Corrupted 125 tracked files across two full-suite runs before
+   anyone noticed — the project owner caught it, cleaned up with a direct commit ("botch repair",
+   `251513a`), and asked for the underlying bug fixed. `load_config()` no longer reads the env
+   var at all; each CLI's own entry point reads it and passes it through explicitly; and
+   `tests/conftest.py` now has an autouse fixture stripping it before every test, which is the
+   layer that actually closes the hole (moving the read alone isn't enough, since tests that
+   correctly drive `main()` are genuine CLI invocations too). Verified by deliberately
+   reproducing the exact hazardous combo three times post-fix: zero corruption each time.
 
 Every ticket's own `## Log` section has the specific before/after and what was tested — this
 page is an index into those, not a replacement for reading one when the detail matters.
 
 ## Status
 
-- Full suite: 409 passing, 0 failing. Run it yourself before trusting this:
+- Full suite: 410 passing, 0 failing. Run it yourself before trusting this:
   `cd src/Backhaul && python3 -m pytest -q`.
+- Tests are now hermetic against `BACKHAUL_LOCAL_ROOT` (BH_028) — safe to `export` it and run
+  `pytest` in the same shell, which wasn't true earlier in this branch's own history.
 - `backhaul refresh` has been run against this repo's own real content (not just synthetic test
   fixtures) — `BOARD.md`/`BACKHAUL.md` are current. Only BH_025 is open.
 - **Nothing on this branch has been committed.** The working tree has code, tests, and wiki/

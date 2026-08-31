@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -37,8 +38,18 @@ def _resolve_config_path(args: argparse.Namespace) -> Path:
     )
 
 
+def _load_config(config_path: str | Path) -> dict:
+    """Load a config, applying BACKHAUL_LOCAL_ROOT from this process's own environment if set.
+
+    The one place in this CLI that reads that env var (see BH_028) — `foundation.config
+    .load_config()` itself deliberately doesn't anymore, so every other call to it (including
+    every test's own synthetic config) is unaffected by whatever happens to be exported in the
+    ambient shell. Real CLI invocations go through here instead."""
+    return _config.load_config(config_path, local_root=os.environ.get(_config.LOCAL_ROOT_ENV_VAR))
+
+
 def _cmd_dashboard(args: argparse.Namespace) -> int:
-    cfg = _config.load_config(_resolve_config_path(args))
+    cfg = _load_config(_resolve_config_path(args))
     tickets_root = Path(cfg["content_roots"]["tickets"])
     wiki_root = Path(cfg["content_roots"]["wiki"])
 
@@ -101,7 +112,7 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
     `enabled_modules: []` for roadmap/roles just skips those steps cleanly rather than erroring.
     Lint findings are printed but never fail this command — lint is diagnostic, not a gate.
     """
-    cfg = _config.load_config(_resolve_config_path(args))
+    cfg = _load_config(_resolve_config_path(args))
     tickets_root = Path(cfg["content_roots"]["tickets"])
     wiki_root = Path(cfg["content_roots"]["wiki"])
     host_root = _config.get_host_root(cfg)
@@ -180,7 +191,7 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
 
 
 def _cmd_lint(args: argparse.Namespace) -> int:
-    cfg = _config.load_config(_resolve_config_path(args))
+    cfg = _load_config(_resolve_config_path(args))
     checks = [c.strip() for c in args.check.split(",") if c.strip()] if args.check else None
 
     try:

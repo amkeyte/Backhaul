@@ -256,6 +256,35 @@ def test_cli_dashboard_omits_build_ready_when_not_configured(tmp_path: Path):
     assert "Build status" not in content
 
 
+def test_cli_dashboard_applies_backhaul_local_root_env_var(tmp_path: Path, monkeypatch):
+    """BH_028: a real `backhaul` invocation must still honor BACKHAUL_LOCAL_ROOT end-to-end,
+    even though env-var reading moved out of foundation.config.load_config() itself (which a
+    bare call, like every other test's own config fixture makes, no longer picks up) and into
+    this CLI's own _load_config() helper. Without correct remapping here, this config's
+    Windows-style content_roots aren't absolute on this machine and `dashboard` would fail with
+    a ConfigError instead of succeeding."""
+    real_root = tmp_path / "real"
+    (real_root / "backhaul" / "tickets").mkdir(parents=True)
+    (real_root / "backhaul" / "wiki").mkdir(parents=True)
+
+    cfg_path = tmp_path / "config.local.json"
+    cfg_path.write_text(
+        json.dumps(
+            {
+                "version": "0.1.0",
+                "content_roots": {
+                    "tickets": r"C:\_local\SomeProject\backhaul\tickets",
+                    "wiki": r"C:\_local\SomeProject\backhaul\wiki",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BACKHAUL_LOCAL_ROOT", str(real_root))
+    assert main(["--config", str(cfg_path), "dashboard"]) == 0
+    assert (real_root / "BACKHAUL.md").exists()
+
+
 def test_cli_dashboard_omits_roadmap_without_config_root(tmp_path: Path):
     cfg_path = _write_config(tmp_path, enabled_modules=["roadmap"])  # enabled but no content_roots.roadmap
     assert main(["--config", str(cfg_path), "dashboard"]) == 0

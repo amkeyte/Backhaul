@@ -36,10 +36,13 @@ around it.
 4. `pip show backhaul` — confirm **Version: 0.2.0.dev0**, not `0.1.0`. If it still says `0.1.0`,
    the install picked up stale cached metadata; `pip uninstall backhaul` and reinstall before
    continuing, since everything below assumes this is current.
-5. `cd src/Backhaul && python3 -m pytest -q` — expect **409 passed, 0 failed** (1 skipped is also
-   fine here — that's `test_shortcuts.py` cleanly skipping itself if `pylnk3` isn't installed,
-   not an error; see BH_027 below if you instead see a collection-time error). Do not proceed
-   past a failure here; nothing below is meaningful on top of a red suite.
+5. `cd src/Backhaul && python3 -m pytest -q` — expect **410 passed, 0 failed** if `pylnk3` is
+   installed, or **407 passed, 1 skipped, 0 failed** if it isn't (`test_shortcuts.py`'s
+   module-level `pytest.importorskip("pylnk3")` collapses its 3 tests into a single reported
+   skip in this repo's pytest version — that's the correct, clean-pass shape, not an error).
+   Either count is fine; what matters is 0 failed and no collection-time error. See BH_027 below
+   if you instead see `1 skipped, 1 error` with pytest aborting collection entirely. Do not
+   proceed past a failure here; nothing below is meaningful on top of a red suite.
 
    **If step 5 instead shows `1 skipped, 1 error` with pytest aborting collection entirely**:
    this was a real bug (BH_027, fixed 2026-08-31) — `backhaul.modules.shortcuts` used to `import
@@ -47,6 +50,13 @@ around it.
    `dev`, so the exact install command in step 3 couldn't pass step 5 as written. If you're
    seeing this, you're testing a commit from before the fix — pull latest `dev` and retry rather
    than working around it by installing `pylnk3` yourself.
+
+   **Safe to run with `BACKHAUL_LOCAL_ROOT` exported in the same shell (BH_028, fixed
+   2026-08-31).** It used to not be — that exact combination silently corrupted this repo's own
+   tracked `content/`/`Fronthaul/` fixture data by redirecting several tests' own synthetic
+   configs onto whatever the env var pointed at. `tests/conftest.py` now strips it before every
+   test regardless of the ambient shell. If you're testing a commit from before this fix, don't
+   export that env var in the same shell you run pytest in.
 
 ## 2. Version & branch identification (BH_026) — the actual point of this checklist
 

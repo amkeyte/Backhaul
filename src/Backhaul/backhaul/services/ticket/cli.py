@@ -8,6 +8,7 @@ persisted cwd.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -45,6 +46,16 @@ def _resolve_config_path(args: argparse.Namespace) -> Path:
     )
 
 
+def _load_config(config_path: str | Path) -> dict:
+    """Load a config, applying BACKHAUL_LOCAL_ROOT from this process's own environment if set.
+
+    The one place in this CLI that reads that env var (see BH_028) — `foundation.config
+    .load_config()` itself deliberately doesn't anymore, so every other call to it (including
+    every test's own synthetic config) is unaffected by whatever happens to be exported in the
+    ambient shell. Real CLI invocations go through here instead."""
+    return _config.load_config(config_path, local_root=os.environ.get(_config.LOCAL_ROOT_ENV_VAR))
+
+
 def _tickets_root(cfg: dict) -> Path:
     return Path(cfg["content_roots"]["tickets"])
 
@@ -67,7 +78,7 @@ def _dashboard_path(tickets_root: Path) -> Path:
 
 
 def _cmd_open(args: argparse.Namespace) -> int:
-    cfg = _config.load_config(_resolve_config_path(args))
+    cfg = _load_config(_resolve_config_path(args))
     tickets_root = _tickets_root(cfg)
     host_root = _config.get_host_root(cfg)
     path = _create.create_ticket(
@@ -135,7 +146,7 @@ def _find_one_ticket(tickets_root: Path, ticket_id: str) -> Path | None:
 
 
 def _cmd_close(args: argparse.Namespace) -> int:
-    cfg = _config.load_config(_resolve_config_path(args))
+    cfg = _load_config(_resolve_config_path(args))
     tickets_root = _tickets_root(cfg)
     path = _find_one_ticket(tickets_root, args.id)
     if path is None:
@@ -168,7 +179,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
     (supersedes BH_010 — see that ticket's closing log for why validating `open`/`close` more
     strictly wouldn't have caught BKHL_006's six mistyped tickets, since none of them were ever
     touched by the CLI in the first place)."""
-    cfg = _config.load_config(_resolve_config_path(args))
+    cfg = _load_config(_resolve_config_path(args))
     tickets_root = _tickets_root(cfg)
     path = _find_one_ticket(tickets_root, args.id)
     if path is None:
@@ -200,7 +211,7 @@ def _cmd_log(args: argparse.Namespace) -> int:
     """Append a dated entry to a ticket's `## Log` section — see BH_016. Entry text comes from
     --entry, --entry-file (for multi-paragraph text, the common case per BKHL_011's own finding),
     or stdin, checked in that order."""
-    cfg = _config.load_config(_resolve_config_path(args))
+    cfg = _load_config(_resolve_config_path(args))
     tickets_root = _tickets_root(cfg)
     path = _find_one_ticket(tickets_root, args.id)
     if path is None:
@@ -229,7 +240,7 @@ def _cmd_log(args: argparse.Namespace) -> int:
 
 
 def _cmd_board(args: argparse.Namespace) -> int:
-    cfg = _config.load_config(_resolve_config_path(args))
+    cfg = _load_config(_resolve_config_path(args))
     tickets_root = _tickets_root(cfg)
     out = Path(args.output) if args.output else _board_path(tickets_root)
     _board.build_board(
@@ -248,7 +259,7 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
     checkout path, or — as happened once — a dev sandbox) and need to be recomputed against
     this machine's real, resolved paths.
     """
-    cfg = _config.load_config(_resolve_config_path(args))
+    cfg = _load_config(_resolve_config_path(args))
     tickets_root = _tickets_root(cfg)
     host_root = _config.get_host_root(cfg)
     board_path = _board_path(tickets_root)

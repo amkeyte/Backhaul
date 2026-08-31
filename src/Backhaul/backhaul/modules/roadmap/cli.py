@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -50,8 +51,16 @@ def _resolve_config_path(args: argparse.Namespace) -> Path:
 def _load_enabled_config(args: argparse.Namespace) -> dict:
     """Load config and refuse to proceed if the roadmap module isn't enabled here — the actual
     enforcement of enabled_modules this module was built to demonstrate (previously purely
-    decorative — see foundation/config.py's get_enabled_modules docstring)."""
-    cfg = _config.load_config(_resolve_config_path(args))
+    decorative — see foundation/config.py's get_enabled_modules docstring).
+
+    Applies BACKHAUL_LOCAL_ROOT from this process's own environment if set — the one place in
+    this CLI that reads that env var (see BH_028). `foundation.config.load_config()` itself
+    deliberately doesn't anymore, so a bare call to it (e.g. every test's own synthetic config)
+    is unaffected by whatever happens to be exported in the ambient shell; only this real CLI
+    entry point is."""
+    cfg = _config.load_config(
+        _resolve_config_path(args), local_root=os.environ.get(_config.LOCAL_ROOT_ENV_VAR)
+    )
     if _MODULE_ID not in _config.get_enabled_modules(cfg):
         raise RoadmapCliError(
             f"module {_MODULE_ID!r} is not enabled in this config's enabled_modules — "

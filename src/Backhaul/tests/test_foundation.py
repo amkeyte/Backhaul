@@ -400,7 +400,15 @@ def test_load_config_applies_local_root_param_before_absolute_check(tmp_path: Pa
     assert cfg["content_roots"]["wiki"] == str(local_root / "backhaul" / "wiki")
 
 
-def test_load_config_reads_local_root_from_env_var(tmp_path: Path, monkeypatch):
+def test_load_config_ignores_env_var_without_explicit_param(tmp_path: Path, monkeypatch):
+    """BH_028 regression: load_config() must never read BACKHAUL_LOCAL_ROOT on its own — it did,
+    until this incident, which is exactly what let a shell that had exported it (a normal, docu-
+    mented workflow) silently redirect every test's own tmp_path config onto real, tracked repo
+    content the moment pytest ran in that same shell. Only an explicit local_root= argument (see
+    test_load_config_applies_local_root_param_before_absolute_check) triggers remapping now —
+    every CLI's own _load_config()/_load_enabled_config() helper is what reads the env var and
+    passes it through explicitly; a bare load_config(path) call, like every test's own config
+    fixture makes, is unaffected by whatever happens to be exported in the ambient shell."""
     p = tmp_path / "config.local.json"
     p.write_text(
         json.dumps(
@@ -414,13 +422,17 @@ def test_load_config_reads_local_root_from_env_var(tmp_path: Path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    local_root = tmp_path / "mnt-mcrepos"
-    monkeypatch.setenv(config.LOCAL_ROOT_ENV_VAR, str(local_root))
-    cfg = config.load_config(p)
-    assert cfg["content_roots"]["tickets"] == str(local_root / "backhaul" / "tickets")
+    monkeypatch.setenv(config.LOCAL_ROOT_ENV_VAR, str(tmp_path / "mnt-mcrepos"))
+    # The env var is set but must be ignored: with no local_root to remap them, these
+    # Windows-style content_roots aren't absolute on this machine, so this correctly raises
+    # rather than silently loading (or silently remapping based on the ignored env var).
+    with pytest.raises(config.ConfigError, match="aren't absolute"):
+        config.load_config(p)
 
 
-def test_load_config_explicit_local_root_param_overrides_env_var(tmp_path: Path, monkeypatch):
+def test_load_config_explicit_param_wins_regardless_of_env_var(tmp_path: Path, monkeypatch):
+    """The env var being set has no bearing at all now — only an explicit local_root=
+    argument (what each CLI's own _load_config() helper passes) triggers remapping."""
     p = tmp_path / "config.local.json"
     p.write_text(
         json.dumps(
@@ -436,7 +448,7 @@ def test_load_config_explicit_local_root_param_overrides_env_var(tmp_path: Path,
     )
     env_root = tmp_path / "from-env"
     param_root = tmp_path / "from-param"
-    monkeypatch.setenv(config.LOCAL_ROOT_ENV_VAR, str(env_root))
+    monkeypatch.setenv(config.LOCAL_ROOT_ENV_VAR, str(env_root))  # deliberately ignored
     cfg = config.load_config(p, local_root=str(param_root))
     assert cfg["content_roots"]["tickets"] == str(param_root / "backhaul" / "tickets")
 
