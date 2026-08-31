@@ -12,6 +12,12 @@ from typing import Any
 #: inclusion in the roster; a "retired" role just reads as such in ROLES_INDEX.md).
 STATES = ("active", "retired")
 
+#: Which `claude://` deep link a role's Launch link builds (BH_003) — "cowork" (default, today's
+#: only prior behavior) opens a Cowork session; "code" opens Claude Code instead. See
+#: modules/roles/launch.py's build_launch_link, which reads this field to pick between
+#: foundation.claude_link's build_cowork_link/build_code_link.
+LAUNCH_TARGETS = ("cowork", "code")
+
 _REQUIRED_FIELDS = ("slug", "title")
 
 
@@ -29,6 +35,7 @@ class RoleFrontmatter:
     authority: str | None = None
     reports_to: str | None = None
     status: str = "active"
+    launch_target: str = "cowork"
     updated: str | None = None
 
     def __post_init__(self) -> None:
@@ -51,6 +58,12 @@ def validate(frontmatter: dict[str, Any]) -> RoleFrontmatter:
     if status not in STATES:
         raise RoleValidationError(f"role page status {status!r} is not one of {STATES}")
 
+    launch_target = frontmatter.get("launch_target") or "cowork"
+    if launch_target not in LAUNCH_TARGETS:
+        raise RoleValidationError(
+            f"role page launch_target {launch_target!r} is not one of {LAUNCH_TARGETS}"
+        )
+
     return RoleFrontmatter(
         slug=str(frontmatter["slug"]),
         title=str(frontmatter["title"]),
@@ -60,5 +73,6 @@ def validate(frontmatter: dict[str, Any]) -> RoleFrontmatter:
         authority=frontmatter.get("authority") or None,
         reports_to=frontmatter.get("reports_to") or None,
         status=status,
+        launch_target=launch_target,
         updated=frontmatter.get("updated"),
     )

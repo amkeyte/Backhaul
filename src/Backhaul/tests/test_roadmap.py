@@ -164,6 +164,37 @@ def test_validate_superseded_requires_superseded_by():
     assert node.superseded_by == "RM_ARR_002"
 
 
+def test_validate_accepts_superseded_convergence_node(tmp_path: Path):
+    # BH_013: convergence nodes gained a real terminal exit -- reuses "superseded" (project
+    # owner's call, same value work nodes already use), same superseded_by requirement applies
+    # unconditionally on kind (no special-casing needed in validate() to add this).
+    node = validate(
+        {
+            "uid": "RM_ARR",
+            "number": 1,
+            "kind": "convergence",
+            "status": "superseded",
+            "title": "X",
+            "owner": "Arryn",
+            "superseded_by": "RM_ARR_002",
+        }
+    )
+    assert node.status == "superseded"
+
+    with pytest.raises(RoadmapValidationError):
+        validate(
+            {
+                "uid": "RM_ARR",
+                "number": 1,
+                "kind": "convergence",
+                "status": "superseded",
+                "title": "X",
+                "owner": "Arryn",
+                # no superseded_by -- still required regardless of kind.
+            }
+        )
+
+
 def test_validate_rejects_bad_depends_on_shape():
     with pytest.raises(RoadmapValidationError):
         validate(
@@ -343,6 +374,55 @@ def test_convergence_bypass_empty_when_no_convergence_nodes(tmp_path: Path):
 
     nodes = _graph.load_graph(root, "RM_TST")
     assert _graph.find_convergence_bypasses(nodes) == []
+
+
+# --- convergence terminal status + stale-ref check (BH_013) -------------------------------
+
+
+def test_superseded_convergence_is_never_actionable(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(
+        root, "RM_TST", 1, title="Retired milestone", kind="convergence",
+        status="superseded", superseded_by="RM_TST_002",
+    )
+    _write_node(root, "RM_TST", 2, title="Replacement milestone", kind="convergence", status="WIP")
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    assert not _graph.is_actionable(nodes, "RM_TST_001")
+    assert "RM_TST_001" not in _graph.frontier(nodes)
+
+
+def test_find_stale_superseded_refs_flags_direct_dependency(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(
+        root, "RM_TST", 1, title="Retired milestone", kind="convergence",
+        status="superseded", superseded_by="RM_TST_003",
+    )
+    _write_node(root, "RM_TST", 2, title="Still points at it", depends_on=["RM_TST_001"])
+    _write_node(root, "RM_TST", 3, title="Replacement milestone", kind="convergence", status="WIP")
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    findings = _graph.find_stale_superseded_refs(nodes)
+    assert findings == [("RM_TST_002", "RM_TST_001")]
+
+
+def test_find_stale_superseded_refs_flags_superseded_work_node_too(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="Old approach", status="superseded", superseded_by="RM_TST_003")
+    _write_node(root, "RM_TST", 2, title="Still points at it", depends_on=["RM_TST_001"])
+    _write_node(root, "RM_TST", 3, title="New approach")
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    assert _graph.find_stale_superseded_refs(nodes) == [("RM_TST_002", "RM_TST_001")]
+
+
+def test_find_stale_superseded_refs_empty_when_nothing_superseded(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_TST", 1, title="A")
+    _write_node(root, "RM_TST", 2, title="B", depends_on=["RM_TST_001"])
+
+    nodes = _graph.load_graph(root, "RM_TST")
+    assert _graph.find_stale_superseded_refs(nodes) == []
 
 
 def test_convergence_bypass_never_raises_is_advisory_only(tmp_path: Path):
@@ -811,6 +891,22 @@ def test_html_color_convergence_wip_is_orange_dashed():
     assert dash != ""
 
 
+def test_html_color_convergence_superseded_is_green_not_wip_orange(tmp_path: Path):
+    """Regression: a superseded convergence node (BH_013) must land in the same green
+    "done" bucket a superseded work node uses, not fall through to the orange-dashed WIP
+    bucket -- a retired node rendering as "still active" would be actively misleading."""
+    node = _graph.Node(
+        frontmatter=validate({
+            "uid": "RM_TST", "number": 1, "kind": "convergence", "status": "superseded",
+            "title": "X", "owner": "O", "superseded_by": "RM_TST_002",
+        }),
+        path=Path("x.md"),
+    )
+    fill, _, dash = _graph._html_color(node, actionable=False)
+    assert fill == "#2e7d4a"
+    assert dash == ""
+
+
 def test_render_html_shows_slug_bold_after_id_label(tmp_path: Path):
     root = tmp_path / "roadmap"
     _write_node(root, "RM_TST", 1, title="Border mutation validation hardening", slug="betty")
@@ -952,6 +1048,72 @@ def test_build_index_raises_on_invalid_graph_instead_of_skipping(tmp_path: Path)
         _graph.build_index(root, out)
 
 
+# --- Required By regeneration (BH_011) --------------------------------------------------------
+
+
+def test_build_index_writes_required_by_on_a_fresh_node(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_FRO", 1, title="Root", depends_on=[])
+    _write_node(root, "RM_FRO", 2, title="Child", depends_on=["RM_FRO_001"])
+
+    _graph.build_index(root, tmp_path / "ROADMAP_INDEX.md")
+
+    root_body = _frontmatter.parse(root / "RM_FRO_001.md").body
+    assert "[**RM_FRO_002**](RM_FRO_002.md) — Child" in root_body
+
+    child_body = _frontmatter.parse(root / "RM_FRO_002.md").body
+    assert "*(computed — nothing depends on this yet)*" in child_body
+
+
+def test_build_index_migrates_freehand_required_by_section_in_place(tmp_path: Path):
+    # Every real node predates the marker -- confirm the stale placeholder gets replaced, not
+    # duplicated alongside a new marked block.
+    root = tmp_path / "roadmap"
+    root.mkdir(parents=True)
+    path = _write_node(root, "RM_FRO", 1, title="Root", depends_on=[])
+    _write_node(root, "RM_FRO", 2, title="Child", depends_on=["RM_FRO_001"])
+
+    doc = _frontmatter.parse(path)
+    doc.body = doc.body.rstrip("\n") + (
+        "\n\n## Required By\n\n*(computed — nothing depends on this yet)*\n"
+    )
+    _frontmatter.write(doc)
+
+    _graph.build_index(root, tmp_path / "ROADMAP_INDEX.md")
+
+    body = _frontmatter.parse(path).body
+    assert body.count("## Required By") == 1
+    assert "[**RM_FRO_002**](RM_FRO_002.md) — Child" in body
+    assert "nothing depends on this yet" not in body
+
+
+def test_build_index_required_by_is_idempotent(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_FRO", 1, title="Root", depends_on=[])
+    _write_node(root, "RM_FRO", 2, title="Child", depends_on=["RM_FRO_001"])
+
+    out = tmp_path / "ROADMAP_INDEX.md"
+    _graph.build_index(root, out)
+    first = (root / "RM_FRO_001.md").read_text(encoding="utf-8")
+    _graph.build_index(root, out)
+    assert (root / "RM_FRO_001.md").read_text(encoding="utf-8") == first
+
+
+def test_build_index_required_by_updates_when_dependents_change(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    _write_node(root, "RM_FRO", 1, title="Root", depends_on=[])
+    out = tmp_path / "ROADMAP_INDEX.md"
+
+    _graph.build_index(root, out)
+    assert "nothing depends on this yet" in _frontmatter.parse(root / "RM_FRO_001.md").body
+
+    _write_node(root, "RM_FRO", 2, title="Child", depends_on=["RM_FRO_001"])
+    _graph.build_index(root, out)
+    body = _frontmatter.parse(root / "RM_FRO_001.md").body
+    assert "nothing depends on this yet" not in body
+    assert "[**RM_FRO_002**](RM_FRO_002.md) — Child" in body
+
+
 def test_load_graph_is_read_only(tmp_path: Path):
     root = tmp_path / "roadmap"
     path = _write_node(root, "RM_TST", 1, title="A", depends_on=[])
@@ -978,6 +1140,38 @@ def test_refresh_header_inserts_block(tmp_path: Path):
     content = path.read_text(encoding="utf-8")
     assert "[Dashboard](BACKHAUL.md)" in content
     assert "[Roadmap Index](../ROADMAP_INDEX.md) · RM_ARR" in content
+
+
+def test_refresh_required_by_appends_section_when_none_exists(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    path = _write_node(root, "RM_ARR", 1, title="A node")
+    dep_path = root / "RM_ARR_002.md"
+
+    _header.refresh_required_by(path, [("RM_ARR_002", "Dependent", dep_path)])
+    body = _frontmatter.parse(path).body
+    assert "## Required By" in body
+    assert "[**RM_ARR_002**](RM_ARR_002.md) — Dependent" in body
+
+
+def test_refresh_required_by_empty_list_shows_placeholder(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    path = _write_node(root, "RM_ARR", 1, title="A node")
+
+    _header.refresh_required_by(path, [])
+    assert "*(computed — nothing depends on this yet)*" in _frontmatter.parse(path).body
+
+
+def test_refresh_required_by_replaces_existing_marked_block(tmp_path: Path):
+    root = tmp_path / "roadmap"
+    path = _write_node(root, "RM_ARR", 1, title="A node")
+    dep_path = root / "RM_ARR_002.md"
+
+    _header.refresh_required_by(path, [("RM_ARR_002", "First", dep_path)])
+    _header.refresh_required_by(path, [("RM_ARR_002", "Renamed", dep_path)])
+    body = _frontmatter.parse(path).body
+    assert body.count("## Required By") == 1
+    assert "Renamed" in body
+    assert "First" not in body
 
 
 def test_refresh_header_is_idempotent(tmp_path: Path):

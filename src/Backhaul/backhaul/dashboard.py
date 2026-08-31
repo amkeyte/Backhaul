@@ -20,8 +20,11 @@ from backhaul.services.ticket.schema import OPEN_STATES
 
 
 def _relpath(target: str | Path, start: str | Path) -> str:
-    """Relative path from directory `start` to `target`, POSIX-style separators. Deliberately
-    NOT resolved — same reasoning as services/ticket/board.py's _relpath."""
+    """Relative path from directory `start` to `target`, POSIX-style separators. Not resolved:
+    paths passed in are trusted as already-correct absolute paths, so no filesystem
+    re-derivation is needed. (services/ticket/board.py's own `_relpath` does call `.resolve()`
+    — unrelated reasoning specific to that function's own Edit-link building, not a discrepancy
+    worth reconciling, since content roots aren't expected to be symlinked.)"""
     return os.path.relpath(Path(target), Path(start)).replace(os.sep, "/")
 
 
@@ -92,6 +95,7 @@ def render_dashboard(
     roles_root: str | Path | None = None,
     roles_index_path: str | Path | None = None,
     project_name: str = "Backhaul",
+    build_ready: str | None = None,
 ) -> str:
     """Render BACKHAUL.md's body: links to the board and wiki index, each with a live count.
 
@@ -99,6 +103,16 @@ def render_dashboard(
     only passes them through when that module is both configured (content_roots.roadmap /
     content_roots.roles) and enabled (enabled_modules), so a project that doesn't use a module
     never sees a dead link.
+
+    `build_ready` (BH_007), when given ("ready" or "notReady" — see foundation/config.py's
+    get_build_ready), renders a bolded one-line marker right under the title, ahead of every
+    other line — the whole point is a human can answer "is this buildable right now" without
+    reading the board/roadmap/tickets separately, so it has to be the first thing seen, not
+    buried alongside the counts. Omitted (None, the default) shows no marker line at all — a
+    project that hasn't opted into this convention sees exactly today's dashboard, unchanged.
+    Deliberately kept out of foundation/header.py's shared bh-header block: that block is
+    rendered on every piece of Backhaul content (tickets, pages, nodes, roles), and this marker
+    is specific to the dashboard's own front page, not something every ticket should carry.
 
     Gets its own bh-header too (see foundation/header.py) — just the bolded project name, no
     Dashboard link (this file *is* the dashboard) and no indexer link (there are several, one
@@ -126,6 +140,12 @@ def render_dashboard(
         "",
         "# Backhaul",
         "",
+    ]
+    if build_ready == "ready":
+        lines += ["**Build status: Ready**", ""]
+    elif build_ready == "notReady":
+        lines += ["**Build status: Not ready**", ""]
+    lines += [
         f"- [Work Board]({board_rel}) — {open_count} open {ticket_word}",
         f"- [Wiki Index]({index_rel}) — {page_count} {page_word}",
     ]
@@ -161,6 +181,7 @@ def build_dashboard(
     roles_root: str | Path | None = None,
     roles_index_path: str | Path | None = None,
     project_name: str = "Backhaul",
+    build_ready: str | None = None,
 ) -> None:
     """Render and write BACKHAUL.md to output_path, overwriting wholesale like BOARD.md/
     WIKI_INDEX.md — it's a generated front page, not something to hand-edit."""
@@ -176,5 +197,6 @@ def build_dashboard(
         roles_root=roles_root,
         roles_index_path=roles_index_path,
         project_name=project_name,
+        build_ready=build_ready,
     )
     filesafety.safe_write(output_path, content, overwrite=True)

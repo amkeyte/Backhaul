@@ -1,9 +1,10 @@
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
 
-from backhaul.foundation import claude_link, client_registry, config, filesafety, frontmatter, handler_uri, header, host_paths, identity, markers, projects, rollup, slugify, templating
+from backhaul.foundation import body_log, build_info, claude_link, client_registry, config, filesafety, frontmatter, handler_uri, header, host_paths, identity, markers, projects, rollup, slugify, templating
 
 
 def test_frontmatter_roundtrip(tmp_path: Path):
@@ -27,6 +28,36 @@ def test_frontmatter_rejects_missing_block(tmp_path: Path):
     p.write_text("no frontmatter here\n", encoding="utf-8")
     with pytest.raises(frontmatter.FrontmatterError):
         frontmatter.parse(p)
+
+
+def test_frontmatter_parse_raises_parse_error_naming_file_on_bad_yaml(tmp_path: Path):
+    # An unquoted colon-space scalar -- the exact real-world crash BH_020/BKHL_016 hit.
+    p = tmp_path / "FRO_051_border-load-count-mismatch.md"
+    p.write_text(
+        "---\ntitle: Border load count: client vs server\nstatus: open\n---\nBody.\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(frontmatter.FrontmatterParseError) as excinfo:
+        frontmatter.parse(p)
+    assert "FRO_051" in str(excinfo.value)
+
+
+def test_frontmatter_parse_error_is_a_frontmatter_error(tmp_path: Path):
+    # Existing `except FrontmatterError` call sites (e.g. _cmd_refresh's per-file skip loops)
+    # must keep working unchanged against the new, more specific subclass.
+    p = tmp_path / "bad.md"
+    p.write_text("---\ntitle: a: b\n---\nBody.\n", encoding="utf-8")
+    with pytest.raises(frontmatter.FrontmatterError):
+        frontmatter.parse(p)
+
+
+def test_frontmatter_serialize_auto_quotes_colon_scalar():
+    # The writer-side half of BH_020: confirms yaml.safe_dump already quotes a colon-space
+    # scalar, so anything written through this module's own serialize() can't reproduce the
+    # crash the two tests above cover -- only a hand-edited file can.
+    doc = frontmatter.ParsedDoc(frontmatter={"title": "Border load count: client vs server"}, body="Body.\n")
+    text = frontmatter.serialize(doc)
+    assert "title: 'Border load count: client vs server'" in text
 
 
 def test_identity_next_number():
@@ -410,6 +441,142 @@ def test_load_config_explicit_local_root_param_overrides_env_var(tmp_path: Path,
     assert cfg["content_roots"]["tickets"] == str(param_root / "backhaul" / "tickets")
 
 
+# --- find_config_upward / resolve_config_path (BH_019) --------------------------------------
+
+
+def test_find_config_upward_finds_backhaul_config_in_ancestor(tmp_path: Path):
+    project_root = tmp_path / "mcRepos"
+    (project_root / "backhaul").mkdir(parents=True)
+    cfg_path = project_root / "backhaul" / "config.local.json"
+    cfg_path.write_text("{}", encoding="utf-8")
+
+    deep = project_root / "FrontierMode" / "src" / "main"
+    deep.mkdir(parents=True)
+
+    assert config.find_config_upward(deep) == cfg_path
+
+
+def test_find_config_upward_finds_config_when_cwd_is_backhaul_dir_itself(tmp_path: Path):
+    backhaul_dir = tmp_path / "mcRepos" / "backhaul"
+    backhaul_dir.mkdir(parents=True)
+    cfg_path = backhaul_dir / "config.local.json"
+    cfg_path.write_text("{}", encoding="utf-8")
+
+    assert config.find_config_upward(backhaul_dir) == cfg_path
+
+
+def test_find_config_upward_returns_none_when_nothing_found(tmp_path: Path):
+    somewhere = tmp_path / "unrelated" / "dir"
+    somewhere.mkdir(parents=True)
+    assert config.find_config_upward(somewhere) is None
+
+
+def test_find_config_upward_does_not_match_backhaul_self_hosting_layout(tmp_path: Path):
+    # This repo's own config lives at <root>/config/config.local.json, not
+    # <root>/backhaul/config.local.json -- the search deliberately doesn't match that shape
+    # (see find_config_upward's docstring); resolve_config_path's own hardcoded default covers
+    # the self-hosting case instead.
+    repo_root = tmp_path / "Backhaul"
+    (repo_root / "config").mkdir(parents=True)
+    (repo_root / "config" / "config.local.json").write_text("{}", encoding="utf-8")
+    (repo_root / "backhaul").mkdir()
+
+    assert config.find_config_upward(repo_root) is None
+
+
+class _Args:
+    def __init__(self, project=None, config=None):
+        self.project = project
+        self.config = config
+
+
+def test_resolve_config_path_prefers_project_flag(tmp_path: Path):
+    registry_path = tmp_path / "projects.json"
+    target = tmp_path / "somewhere" / "config.local.json"
+    target.parent.mkdir(parents=True)
+    target.write_text("{}", encoding="utf-8")
+    registry_path.write_text(json.dumps({"mcrepos": str(target)}), encoding="utf-8")
+
+    resolved = config.resolve_config_path(
+        _Args(project="mcrepos"),
+        default_config_path=tmp_path / "default.json",
+        projects_path=registry_path,
+    )
+    assert resolved == target
+
+
+def test_resolve_config_path_prefers_config_flag_over_upward_search(tmp_path: Path):
+    explicit = tmp_path / "explicit.json"
+    resolved = config.resolve_config_path(
+        _Args(config=str(explicit)),
+        default_config_path=tmp_path / "default.json",
+        projects_path=tmp_path / "projects.json",
+    )
+    assert resolved == explicit
+
+
+def test_resolve_config_path_falls_back_to_default_when_nothing_found(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    default = tmp_path / "default.json"
+    resolved = config.resolve_config_path(
+        _Args(), default_config_path=default, projects_path=tmp_path / "projects.json"
+    )
+    assert resolved == default
+
+
+def test_resolve_config_path_uses_upward_search_when_no_flags_given(tmp_path: Path, monkeypatch):
+    project_root = tmp_path / "mcRepos"
+    (project_root / "backhaul").mkdir(parents=True)
+    cfg_path = project_root / "backhaul" / "config.local.json"
+    cfg_path.write_text("{}", encoding="utf-8")
+
+    cwd = project_root / "FrontierMode"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+
+    resolved = config.resolve_config_path(
+        _Args(), default_config_path=tmp_path / "default.json", projects_path=tmp_path / "projects.json"
+    )
+    assert resolved == cfg_path
+
+
+# --- body_log (BH_016) -----------------------------------------------------------------------
+
+
+def test_append_log_entry_inserts_newest_first_after_blank_line():
+    body = "## Log\n\n- 2026-08-16: Ticket opened.\n"
+    result = body_log.append_log_entry(
+        body, "Closed.", today=date(2026, 8, 28)
+    )
+    assert result == "## Log\n\n- 2026-08-28: Closed.\n- 2026-08-16: Ticket opened.\n"
+
+
+def test_append_log_entry_full_ticket_body():
+    body = "<!-- board:start -->\n<!-- board:end -->\n\n## Summary\n\nDo the thing.\n\n## Log\n\n- 2026-08-16: Ticket opened.\n"
+    result = body_log.append_log_entry(body, "In progress.", today=date(2026, 8, 28))
+    assert "## Summary\n\nDo the thing.\n\n## Log\n\n- 2026-08-28: In progress.\n- 2026-08-16: Ticket opened.\n" in result
+
+
+def test_append_log_entry_multiline_indents_continuation():
+    body = "## Log\n\n- 2026-08-16: Ticket opened.\n"
+    result = body_log.append_log_entry(
+        body, "First line.\nSecond line.", today=date(2026, 8, 28)
+    )
+    assert "- 2026-08-28: First line.\n  Second line.\n" in result
+
+
+def test_append_log_entry_raises_when_heading_missing():
+    body = "## Summary\n\nNo log section here.\n"
+    with pytest.raises(body_log.BodyLogError):
+        body_log.append_log_entry(body, "entry")
+
+
+def test_append_log_entry_uses_todays_date_by_default():
+    body = "## Log\n\n- 2026-08-16: Ticket opened.\n"
+    result = body_log.append_log_entry(body, "entry")
+    assert f"- {date.today().isoformat()}: entry\n" in result
+
+
 def test_load_config_without_local_root_still_rejects_non_absolute(tmp_path: Path, monkeypatch):
     """No local_root param and no env var set — behavior is unchanged from before this feature
     existed (task #76's fail-loud check still applies)."""
@@ -473,6 +640,26 @@ def test_get_host_root_uses_explicit_value():
 
 def test_get_host_root_none_when_absent():
     assert config.get_host_root({}) is None
+
+
+# --- get_build_ready (BH_007) ---------------------------------------------------------------
+
+
+def test_get_build_ready_none_when_absent():
+    assert config.get_build_ready({}) is None
+
+
+def test_get_build_ready_returns_ready():
+    assert config.get_build_ready({"build_ready": "ready"}) == "ready"
+
+
+def test_get_build_ready_returns_not_ready():
+    assert config.get_build_ready({"build_ready": "notReady"}) == "notReady"
+
+
+def test_get_build_ready_rejects_unknown_value():
+    with pytest.raises(config.ConfigError):
+        config.get_build_ready({"build_ready": "kinda"})
 
 
 # --- host_paths.to_host_path --------------------------------------------------------------
@@ -603,3 +790,55 @@ def test_resolve_project_config_unknown_name_lists_known(tmp_path: Path):
     p.write_text(json.dumps({"personal": "C:\\a.json", "mcrepos": "C:\\b.json"}), encoding="utf-8")
     with pytest.raises(projects.ProjectsError, match="mcrepos, personal"):
         projects.resolve_project_config(p, "typo")
+
+
+# --- build_info (--version / branch-identification convention) -----------------------------
+
+
+def test_get_git_info_returns_none_when_git_reports_not_a_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import subprocess as _subprocess
+
+    class _FakeResult:
+        returncode = 128
+        stdout = ""
+
+    monkeypatch.setattr(_subprocess, "run", lambda *a, **k: _FakeResult())
+    assert build_info.get_git_info(tmp_path) == (None, None)
+
+
+def test_get_git_info_returns_branch_and_commit_on_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import subprocess as _subprocess
+
+    calls = iter([
+        type("R", (), {"returncode": 0, "stdout": "dev\n"})(),
+        type("R", (), {"returncode": 0, "stdout": "abc1234\n"})(),
+    ])
+    monkeypatch.setattr(_subprocess, "run", lambda *a, **k: next(calls))
+    assert build_info.get_git_info(tmp_path) == ("dev", "abc1234")
+
+
+def test_get_git_info_handles_missing_git_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import subprocess as _subprocess
+
+    def _raise(*args, **kwargs):
+        raise FileNotFoundError("git not found")
+
+    monkeypatch.setattr(_subprocess, "run", _raise)
+    assert build_info.get_git_info(tmp_path) == (None, None)
+
+
+def test_format_version_string_includes_prog_and_package_version():
+    s = build_info.format_version_string("bht")
+    assert s.startswith("bht ")
+    assert build_info.PACKAGE_VERSION in s
+
+
+def test_format_version_string_omits_git_info_when_unavailable(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(build_info, "get_git_info", lambda *a, **k: (None, None))
+    s = build_info.format_version_string("bht")
+    assert s == f"bht {build_info.PACKAGE_VERSION}"
+    assert "@" not in s

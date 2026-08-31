@@ -3,13 +3,13 @@ id: BH_010
 uid: BH
 number: 10
 client: BH
-status: open
+status: done
 title: bht status vocabulary not validated on write
 context: 'Six mcRepos tickets carry status: closed, outside BHT''s open/in-progress/blocked/done
   vocabulary, and nothing rejected it. See BKHL_006 (mcRepos).'
 priority: low
 opened: '2026-08-24'
-closed: null
+closed: '2026-08-28'
 ---
 
 <!-- board:start -->
@@ -39,6 +39,7 @@ patched by hand each time it recurs.
 
 ## Log
 
+- 2026-08-28: Superseded by BH_017 -- status validation on write already covers open/close; the real gap was the missing in-progress/blocked transition command, which bht status now provides. Closing as a duplicate rather than shipping redundant validation.
 - 2026-08-24: Ticket opened.
 <!-- bh-header:start -->
 **Fronthaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:////sessions/vigilant-magical-hamilton/mnt/Backhaul/backhaul)

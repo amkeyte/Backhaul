@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 
 from backhaul.foundation import frontmatter
-from backhaul.foundation.projects import ProjectsError
 from backhaul.services.wiki.cli import main
 
 
@@ -185,7 +184,11 @@ def test_project_flag_resolves_via_registry(tmp_path: Path, monkeypatch: pytest.
     assert (tmp_path / "content" / "wiki" / "meta" / "about.md").exists()
 
 
-def test_project_flag_unknown_name_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_project_flag_unknown_name_fails_cleanly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """main() catches ProjectsError itself (BH_022) and reports it as a clean FAIL, rather than
+    letting it propagate as a raw exception -- same treatment as a missing/malformed config."""
     registry_path = tmp_path / "projects.json"
     registry_path.write_text(json.dumps({"known": "x"}), encoding="utf-8")
 
@@ -193,8 +196,25 @@ def test_project_flag_unknown_name_raises(tmp_path: Path, monkeypatch: pytest.Mo
 
     monkeypatch.setattr(cli_module, "_PROJECTS_PATH", registry_path)
 
-    with pytest.raises(ProjectsError):
-        main(["--project", "typo", "index"])
+    assert main(["--project", "typo", "index"]) == 1
+    assert "FAIL:" in capsys.readouterr().err
+
+
+def test_missing_config_fails_cleanly_not_a_traceback(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    missing = tmp_path / "nope" / "config.local.json"
+    assert main(["--config", str(missing), "index"]) == 1
+    assert "FAIL:" in capsys.readouterr().err
+
+
+def test_version_flag_prints_prog_and_package_version(capsys: pytest.CaptureFixture[str]):
+    from backhaul import __version__ as package_version
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--version"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "bhw" in out
+    assert package_version in out
 
 
 def test_projects_command_lists_registered(

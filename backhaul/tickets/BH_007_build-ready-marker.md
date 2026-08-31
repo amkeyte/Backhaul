@@ -3,13 +3,13 @@ id: BH_007
 uid: BH
 number: 7
 client: BH
-status: open
+status: done
 title: Build-ready marker on the dashboard
 context: Per-project ready/notReady/none flag rendered on BACKHAUL.md. See ticket
   body for open design questions.
 priority: normal
 opened: '2026-08-16'
-closed: null
+closed: '2026-08-30'
 ---
 
 <!-- board:start -->
@@ -65,6 +65,7 @@ Priority: normal — explicitly requested, not a self-generated backlog idea lik
 
 ## Log
 
+- 2026-08-30: Implemented per user's decisions (2026-08-30): manual (not computed), one-per-project (not per-UID). New optional build_ready: ready|notReady field in config.local.json (config.schema.json documents it), foundation.config.get_build_ready() accessor (validates the value, raises ConfigError on a typo rather than silently treating it as unset), dashboard.py renders a bolded Build status line right under the title -- ahead of Work Board/Wiki Index/etc, not folded into the shared bh-header (that block renders on every ticket/page/node, this is dashboard-specific). Wired into both backhaul dashboard and backhaul refresh. Tests added to test_foundation.py/test_dashboard.py. Documented in wiki/meta/backhaul.md. Full suite green (398).
 - 2026-08-16: Ticket opened.
 <!-- bh-header:start -->
 **Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_local/source/Backhaul)

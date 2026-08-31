@@ -67,6 +67,11 @@ def build_launch_link(
     """Read a role page's bootstrap prompt and build its claude://cowork/new launch link, or
     return None if the page has no bootstrap-prompt section to launch from.
 
+    Which deep link scheme gets built — `claude://cowork/new` or `claude://code/new` — is read
+    from the role page's own `launch_target` frontmatter field (`"cowork"` default, `"code"` the
+    only other option — see modules/roles/schema.py's LAUNCH_TARGETS and BH_003). Both schemes
+    take the same `q`-only shape, so everything else about this function is identical either way.
+
     Two optional preambles get prepended to the prompt text, in this order — both as plain
     instructions inside `q`, never as link params (see module docstring for why: `q`+`folder`
     together were observed to clear the composer instead of prefilling it):
@@ -86,6 +91,7 @@ def build_launch_link(
     prompt = extract_bootstrap_prompt(doc.body)
     if prompt is None:
         return None
+    launch_target = doc.frontmatter.get("launch_target") or "cowork"
     if project_root is not None:
         prompt = (
             f"This role's project folder is {project_root}. If you don't already have file "
@@ -103,4 +109,6 @@ def build_launch_link(
             "backhaul/config.local.json, so pass --config backhaul/config.local.json to any of "
             "those commands.\n\n"
         ) + prompt
+    if launch_target == "code":
+        return claude_link.build_code_link(prompt)
     return claude_link.build_cowork_link(prompt)

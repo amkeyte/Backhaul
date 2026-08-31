@@ -32,6 +32,17 @@ _LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 #: project's own protocol-handler links (editmd:, openfolder:, claude:).
 _NON_LOCAL_SCHEMES = frozenset({"http", "https", "mailto", "editmd", "openfolder", "claude"})
 
+#: A link immediately followed (same line) by this HTML comment is a deliberate reference to
+#: something that may no longer resolve — e.g. a ticket link left in a wiki page's "see also"
+#: after the ticket closed, on purpose, as a paper trail. `find_broken_links()` skips it (see
+#: BH_015). Matches this project's existing marker idiom (`<!-- board:start -->`,
+#: `<!-- bh-header:start -->`) rather than a markdown title attribute (`[text](target "historical")`),
+#: which some viewers render as hover text — that would look like a broken tooltip, not an
+#: intentional marker. Deliberately scoped to `find_broken_links()` only, not `find_orphaned()` —
+#: a historical link is still a real link for orphan-detection purposes, just one that's allowed
+#: to point at a target that's gone.
+_HISTORICAL_LINK_MARKER = "<!-- historical-link -->"
+
 #: client-uids.md (content_roots.tickets/client-uids.md, shared by BHT and BHRM) is
 #: infrastructure a reader finds by convention, not by following a link — same reasoning
 #: LunaFlow's doc-lint exempts index.md/README* for. Note the *other* generated aggregate files
@@ -133,15 +144,30 @@ def find_orphaned(roots: dict[str, Path]) -> list[Finding]:
     return findings
 
 
+def _is_marked_historical(text: str, match_end: int) -> bool:
+    """True when `<!-- historical-link -->` appears on the same line, anywhere after the link
+    itself (allows other trailing text before the marker, not just immediately after)."""
+    newline = text.find("\n", match_end)
+    rest_of_line = text[match_end:newline] if newline != -1 else text[match_end:]
+    return _HISTORICAL_LINK_MARKER in rest_of_line
+
+
 def find_broken_links(roots: dict[str, Path]) -> list[Finding]:
-    """A relative markdown link whose target doesn't exist, resolved from the linking file."""
+    """A relative markdown link whose target doesn't exist, resolved from the linking file.
+
+    Skips a link marked `<!-- historical-link -->` on the same line (see BH_015) — a
+    deliberate reference to something that's gone, not a mistake to flag.
+    """
     files = _all_md_files(roots)
     findings = []
 
     for f in files:
         text = f.read_text(encoding="utf-8", errors="replace")
-        for target in _LINK_RE.findall(text):
+        for m in _LINK_RE.finditer(text):
+            target = m.group(1)
             if not _is_local_path(target):
+                continue
+            if _is_marked_historical(text, m.end()):
                 continue
             resolved = _resolve_target(f, target)
             if resolved is None:

@@ -3,14 +3,14 @@ id: BH_019
 uid: BH
 number: 19
 client: BH
-status: open
+status: done
 title: Default config resolution ignores checkout, contradicts bht.md
 context: bht.md says omit --config for the checkout's own default; for any pip-installed
   consumer project that default resolves relative to the package's own install location,
   not cwd, and always fails. See BKHL_014 (mcRepos).
 priority: normal
 opened: '2026-08-28'
-closed: null
+closed: '2026-08-28'
 ---
 
 <!-- board:start -->

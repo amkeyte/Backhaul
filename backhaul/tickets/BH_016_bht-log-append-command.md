@@ -3,13 +3,13 @@ id: BH_016
 uid: BH
 number: 16
 client: BH
-status: open
+status: done
 title: bht log-append command
 context: open/close are the only write verbs; every dated Log entry today is a hand-edit
   against fragile exact-string anchors. See BKHL_011 (mcRepos).
 priority: normal
 opened: '2026-08-28'
-closed: null
+closed: '2026-08-28'
 ---
 
 <!-- board:start -->

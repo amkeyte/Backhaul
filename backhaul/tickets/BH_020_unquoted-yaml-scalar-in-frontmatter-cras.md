@@ -3,7 +3,7 @@ id: BH_020
 uid: BH
 number: 20
 client: BH
-status: open
+status: done
 title: Unquoted YAML scalar in frontmatter crashes CLI project-wide
 context: A title containing an unquoted colon-space breaks yaml.safe_load with no
   file context in the error; since board/open scan every ticket, one bad file takes
@@ -11,7 +11,7 @@ context: A title containing an unquoted colon-space breaks yaml.safe_load with n
   (mcRepos).
 priority: high
 opened: '2026-08-28'
-closed: null
+closed: '2026-08-28'
 ---
 
 <!-- board:start -->

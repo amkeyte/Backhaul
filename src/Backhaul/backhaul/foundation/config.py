@@ -18,6 +18,8 @@ import os
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
+from . import projects as _projects
+
 #: Env var a session can export to tell every content_roots path where the project's true
 #: root actually is *on this process's own filesystem* — the mirror image of host_root (which
 #: says where a human should click; this says where the CLI should actually read/write, right
@@ -194,6 +196,91 @@ def get_repo_url(config: dict[str, Any]) -> str | None:
     pattern the rest of the optional fields use."""
     url = config.get("repo_url")
     return str(url) if url else None
+
+
+def find_config_upward(start: Path) -> Path | None:
+    """Search `start` and each of its parents for a project's `backhaul/config.local.json`,
+    git-`.git`-style. Returns None if nothing is found before reaching the filesystem root.
+
+    Handles both being outside a project's `backhaul/` directory (checks
+    `<candidate>/backhaul/config.local.json` at every level) and already being inside one
+    (checks `<candidate>/config.local.json` directly when `<candidate>`'s own name is
+    "backhaul"). Only searches for the *consumer-project* layout — every real project this
+    repo has seen puts config.local.json inside its own backhaul/ folder alongside
+    tickets/wiki/roadmap/roles. This repo's own dogfooded config lives at a different relative
+    path (config/config.local.json, not backhaul/config.local.json) and is deliberately not
+    matched here — see resolve_config_path's docstring and wiki/design/bh010-021-architecture.md
+    (BH_019) for why: this search is additive in front of each caller's own hardcoded default,
+    not a replacement for it, so the one case that already worked keeps working unchanged.
+    """
+    candidate = start.resolve()
+    while True:
+        if candidate.name == "backhaul":
+            direct = candidate / "config.local.json"
+            if direct.is_file():
+                return direct
+        nested = candidate / "backhaul" / "config.local.json"
+        if nested.is_file():
+            return nested
+        parent = candidate.parent
+        if parent == candidate:
+            return None
+        candidate = parent
+
+
+def resolve_config_path(
+    args: Any, *, default_config_path: str | Path, projects_path: str | Path
+) -> Path:
+    """Shared --project / --config / upward-search / default resolution, used by every
+    service's own cli.py (bht, bhw, bhrm, bhrole, backhaul) so this logic exists in one place
+    instead of five near-identical copies.
+
+    Priority: `--project` (a name from projects.json) > `--config` (a raw path) > an upward
+    search from the current directory for a project's `backhaul/config.local.json` (see
+    find_config_upward) > the caller's own hardcoded default (this checkout's own config, for
+    the case of running Backhaul directly against its own source without installing it).
+
+    The upward search was added specifically so "omit both flags" works for a consumer project
+    too — before it, the bare default only ever succeeded for this repo's own dogfooding case,
+    which resolves relative to wherever the package is installed, not to cwd (see BH_019). It's
+    additive, not a replacement: falling through to default_config_path when nothing is found
+    upward preserves today's real behavior exactly for the one case that already worked.
+    """
+    project = getattr(args, "project", None)
+    if project:
+        return _projects.resolve_project_config(projects_path, project)
+
+    config_arg = getattr(args, "config", None)
+    if config_arg:
+        return Path(config_arg)
+
+    found = find_config_upward(Path.cwd())
+    if found is not None:
+        return found
+
+    return Path(default_config_path)
+
+
+#: Valid values for config.local.json's optional `build_ready` field (BH_007) — a human-set
+#: marker of whether this project is currently in a buildable/playtestable state, rendered on
+#: BACKHAUL.md. Omitted entirely (get_build_ready() returns None) shows no marker at all.
+BUILD_READY_VALUES = ("ready", "notReady")
+
+
+def get_build_ready(config: dict[str, Any]) -> str | None:
+    """Return this project's manually-set build-ready marker ("ready"/"notReady"), or None if
+    unset — the default, meaning `backhaul dashboard` shows no marker line at all. Raises
+    ConfigError on a value outside BUILD_READY_VALUES, same "fail loud on a bad value" discipline
+    get_enabled_modules already applies, rather than silently treating a typo as unset."""
+    value = config.get("build_ready")
+    if value is None:
+        return None
+    value = str(value)
+    if value not in BUILD_READY_VALUES:
+        raise ConfigError(
+            f"config \"build_ready\" is {value!r}, must be one of {BUILD_READY_VALUES} (or omitted)"
+        )
+    return value
 
 
 def get_host_root(config: dict[str, Any]) -> str | None:

@@ -41,6 +41,11 @@
     "host_root": {
       "type": "string",
       "description": "Optional — this project's real root path on the machine a human will actually open links on (e.g. \"C:\\\\_local\\\\mcRepos\"), independent of wherever content_roots currently resolves at runtime. Set this when the CLI might run somewhere other than that real machine (e.g. a Cowork sandbox mounting the project under a different path) so editmd:/openfolder: Edit and Folder links, and role Launch links' project-folder line, still point at the real path instead of baking in wherever the CLI happened to execute. Omit to keep today's default: links are built straight from content_roots as printed."
+    },
+    "build_ready": {
+      "type": "string",
+      "enum": ["ready", "notReady"],
+      "description": "Optional, manually set (BH_007) — a human-toggled marker rendered as its own line on BACKHAUL.md, answering \"is this project in a state someone could actually build/playtest right now\" without having to read the board, roadmap index, and handoff tickets separately to piece that together. One value per project (not per roadmap UID, even on a project hosting multiple independent graphs — see BH_007's own ticket body for that scope tradeoff). Omit entirely to show no marker at all — the default, and the only state a project not using this convention will ever see."
     }
   }
 }

@@ -61,6 +61,21 @@ def test_validate_defaults_status_to_active():
     assert role.status == "active"
 
 
+def test_validate_defaults_launch_target_to_cowork():
+    role = validate({"slug": "qa", "title": "QA"})
+    assert role.launch_target == "cowork"
+
+
+def test_validate_accepts_code_launch_target():
+    role = validate({"slug": "qa", "title": "QA", "launch_target": "code"})
+    assert role.launch_target == "code"
+
+
+def test_validate_rejects_unknown_launch_target():
+    with pytest.raises(RoleValidationError):
+        validate({"slug": "qa", "title": "QA", "launch_target": "vscode"})
+
+
 # --- create_role -------------------------------------------------------------------------
 
 
@@ -114,6 +129,20 @@ def test_create_role_refuses_overwrite(tmp_path: Path):
     _create.create_role(roles_root=roles_root, title="QA", slug="qa")
     with pytest.raises(filesafety.UnsafeWriteError):
         _create.create_role(roles_root=roles_root, title="QA Again", slug="qa")
+
+
+def test_create_role_defaults_launch_target_to_cowork(tmp_path: Path):
+    roles_root = tmp_path / "roles"
+    path = _create.create_role(roles_root=roles_root, title="QA", slug="qa")
+    doc = _frontmatter.parse(path)
+    assert doc.frontmatter["launch_target"] == "cowork"
+
+
+def test_create_role_accepts_code_launch_target(tmp_path: Path):
+    roles_root = tmp_path / "roles"
+    path = _create.create_role(roles_root=roles_root, title="Dev", slug="dev", launch_target="code")
+    doc = _frontmatter.parse(path)
+    assert doc.frontmatter["launch_target"] == "code"
 
 
 # --- launch (bootstrap-prompt extraction + claude:// link building) ----------------------
@@ -193,6 +222,26 @@ def test_build_launch_link_omits_folder_line_without_project_root(tmp_path: Path
 
     link = _launch.build_launch_link(path)
     assert link == "claude://cowork/new?q=You%20are%20QA."
+
+
+def test_build_launch_link_uses_code_scheme_when_launch_target_is_code(tmp_path: Path):
+    """BH_003: launch_target: code on the role page should build a claude://code/new link
+    instead of the default claude://cowork/new — foundation.claude_link.build_code_link
+    existed unused before this, and launch.py hardcoded build_cowork_link regardless."""
+    roles_root = tmp_path / "roles"
+    path = _create.create_role(roles_root=roles_root, title="Dev", slug="dev", launch_target="code")
+    doc = _frontmatter.parse(path)
+    doc.body = doc.body.replace(
+        "(Write the actual bootstrap prompt here: what the role is, what persona it plays if any, what\n"
+        "to read before doing anything else — orient, instruments, where the work currently stands —\n"
+        "then \"hold your lane\" boundaries, then instructions to summarize back and wait for input\n"
+        "rather than starting work immediately.)",
+        "You are Dev.",
+    )
+    _frontmatter.write(doc)
+
+    link = _launch.build_launch_link(path)
+    assert link == "claude://code/new?q=You%20are%20Dev."
 
 
 def test_build_launch_link_includes_pip_install_line_when_repo_url_given(tmp_path: Path):

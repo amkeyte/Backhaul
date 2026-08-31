@@ -59,14 +59,20 @@ going over); it's a human convention, same as the roadmap-slug guidance in `bhrm
 
 ```
 bht open --client <name> --title "..." [--uid X] [--slug code] [--context "..."] [--priority high]
+bht status <id-or-prefix> <in-progress|blocked|open>
+bht log <id-or-prefix> --entry "..." [--entry-file PATH]
 bht close <id-or-prefix>
 bht board [--output PATH]
 bht refresh                 # recompute Board/Folder links against this machine's real paths
 bht projects                # list config/projects.json entries
 ```
 
-`--project <name>` (or `--config <path>`) selects which project's tickets/board this touches;
-omit both for this checkout's own default config.
+`--project <name>` (or `--config <path>`) selects which project's tickets/board this touches. Omit
+both and `bht` searches upward from the current directory for a project's own
+`backhaul/config.local.json` (like `git` finds `.git`) — so running a bare command from anywhere
+inside a project just works. Falls back to this checkout's own default config only if that search
+finds nothing (the case of running Backhaul directly against its own source, which lives at a
+different relative path — `config/config.local.json`, not `backhaul/config.local.json`).
 
 If `bht` might ever run somewhere other than the real machine (e.g. inside a role's Cowork
 sandbox — see `bhrole`'s meta page), set `host_root` in `config.local.json` so Edit/Folder links

@@ -5,6 +5,8 @@ synthetic tmp_path fixtures.
 import json
 from pathlib import Path
 
+import pytest
+
 from backhaul import dashboard
 from backhaul.cli import main
 from backhaul.modules.roadmap import create as roadmap_create
@@ -132,6 +134,45 @@ def test_render_dashboard_omits_roadmap_when_not_given(tmp_path: Path):
     assert "Roadmap" not in content
 
 
+def test_render_dashboard_omits_build_status_by_default(tmp_path: Path):
+    content = dashboard.render_dashboard(
+        tickets_root=tmp_path / "backhaul" / "tickets", wiki_root=tmp_path / "backhaul" / "wiki",
+        board_path=tmp_path / "backhaul" / "BOARD.md", index_path=tmp_path / "backhaul" / "WIKI_INDEX.md",
+        dashboard_dir=tmp_path,
+    )
+    assert "Build status" not in content
+
+
+def test_render_dashboard_shows_ready(tmp_path: Path):
+    content = dashboard.render_dashboard(
+        tickets_root=tmp_path / "backhaul" / "tickets", wiki_root=tmp_path / "backhaul" / "wiki",
+        board_path=tmp_path / "backhaul" / "BOARD.md", index_path=tmp_path / "backhaul" / "WIKI_INDEX.md",
+        dashboard_dir=tmp_path,
+        build_ready="ready",
+    )
+    assert "**Build status: Ready**" in content
+
+
+def test_render_dashboard_shows_not_ready(tmp_path: Path):
+    content = dashboard.render_dashboard(
+        tickets_root=tmp_path / "backhaul" / "tickets", wiki_root=tmp_path / "backhaul" / "wiki",
+        board_path=tmp_path / "backhaul" / "BOARD.md", index_path=tmp_path / "backhaul" / "WIKI_INDEX.md",
+        dashboard_dir=tmp_path,
+        build_ready="notReady",
+    )
+    assert "**Build status: Not ready**" in content
+
+
+def test_render_dashboard_build_status_appears_before_work_board_line(tmp_path: Path):
+    content = dashboard.render_dashboard(
+        tickets_root=tmp_path / "backhaul" / "tickets", wiki_root=tmp_path / "backhaul" / "wiki",
+        board_path=tmp_path / "backhaul" / "BOARD.md", index_path=tmp_path / "backhaul" / "WIKI_INDEX.md",
+        dashboard_dir=tmp_path,
+        build_ready="ready",
+    )
+    assert content.index("Build status") < content.index("Work Board")
+
+
 def test_build_dashboard_overwrites(tmp_path: Path):
     out = tmp_path / "BACKHAUL.md"
     kwargs = dict(
@@ -195,6 +236,24 @@ def test_cli_dashboard_default_output_location(tmp_path: Path):
     out = tmp_path / "BACKHAUL.md"
     assert out.exists()
     assert "Work Board" in out.read_text(encoding="utf-8")
+
+
+def test_cli_dashboard_shows_build_ready_when_configured(tmp_path: Path):
+    cfg_path = _write_config(tmp_path)
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["build_ready"] = "ready"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    assert main(["--config", str(cfg_path), "dashboard"]) == 0
+    content = (tmp_path / "BACKHAUL.md").read_text(encoding="utf-8")
+    assert "**Build status: Ready**" in content
+
+
+def test_cli_dashboard_omits_build_ready_when_not_configured(tmp_path: Path):
+    cfg_path = _write_config(tmp_path)
+    assert main(["--config", str(cfg_path), "dashboard"]) == 0
+    content = (tmp_path / "BACKHAUL.md").read_text(encoding="utf-8")
+    assert "Build status" not in content
 
 
 def test_cli_dashboard_omits_roadmap_without_config_root(tmp_path: Path):
@@ -290,6 +349,128 @@ def test_cli_lint_unknown_check_fails_loud(tmp_path: Path, capsys):
     cfg_path = _write_config(tmp_path)
     assert main(["--config", str(cfg_path), "lint", "--check", "not-a-check"]) == 2
     assert "unknown check" in capsys.readouterr().err
+
+
+# --- ConfigError/ProjectsError surfaced as a clean FAIL, not a traceback (BH_022) ------------
+
+
+def test_missing_config_fails_cleanly_not_a_traceback(tmp_path: Path, capsys):
+    missing = tmp_path / "nope" / "config.local.json"
+    assert main(["--config", str(missing), "dashboard"]) == 1
+    assert "FAIL:" in capsys.readouterr().err
+
+
+def test_unknown_project_fails_cleanly_not_a_traceback(tmp_path: Path, monkeypatch, capsys):
+    registry_path = tmp_path / "projects.json"
+    registry_path.write_text(json.dumps({"known": "x.json"}), encoding="utf-8")
+
+    import backhaul.cli as cli_module
+
+    monkeypatch.setattr(cli_module, "_PROJECTS_PATH", registry_path)
+    assert main(["--project", "typo", "dashboard"]) == 1
+    assert "FAIL:" in capsys.readouterr().err
+
+
+# --- --version (branch-identification convention) -------------------------------------------
+
+
+def test_version_flag_prints_prog_and_package_version(capsys):
+    from backhaul import __version__ as package_version
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--version"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "backhaul" in out
+    assert package_version in out
+
+
+# --- refresh (BH_014) -----------------------------------------------------------------------
+
+
+def test_cli_refresh_rebuilds_board_wiki_and_dashboard(tmp_path: Path, capsys):
+    cfg_path = _write_config(tmp_path)
+    ticket_create.create_ticket(
+        tickets_root=tmp_path / "backhaul" / "tickets",
+        registry_path=tmp_path / "backhaul" / "tickets" / "client-uids.md",
+        client="General", title="Open one",
+    )
+    wiki_create.create_page(wiki_root=tmp_path / "backhaul" / "wiki", category="meta", title="About")
+
+    assert main(["--config", str(cfg_path), "refresh"]) == 0
+
+    board = (tmp_path / "backhaul" / "BOARD.md").read_text(encoding="utf-8")
+    assert "Open one" in board
+    index = (tmp_path / "backhaul" / "WIKI_INDEX.md").read_text(encoding="utf-8")
+    assert "About" in index
+    dashboard_content = (tmp_path / "BACKHAUL.md").read_text(encoding="utf-8")
+    assert "1 open ticket" in dashboard_content
+    assert "OK: refreshed" in capsys.readouterr().out
+
+
+def test_cli_refresh_skips_roadmap_and_roles_when_not_enabled(tmp_path: Path):
+    cfg_path = _write_config(tmp_path, with_roadmap=True, with_roles=True)  # content roots present, module not enabled
+
+    assert main(["--config", str(cfg_path), "refresh"]) == 0
+    assert not (tmp_path / "backhaul" / "ROADMAP_INDEX.md").exists()
+    assert not (tmp_path / "backhaul" / "ROLES_INDEX.md").exists()
+    dashboard_content = (tmp_path / "BACKHAUL.md").read_text(encoding="utf-8")
+    assert "Roadmap" not in dashboard_content
+    assert "Team" not in dashboard_content
+
+
+def test_cli_refresh_rebuilds_roadmap_and_roles_when_enabled(tmp_path: Path):
+    cfg_path = _write_config(tmp_path, enabled_modules=["roadmap", "roles"], with_roadmap=True, with_roles=True)
+    roadmap_create.create_node(
+        nodes_root=tmp_path / "backhaul" / "roadmap",
+        registry_path=tmp_path / "backhaul" / "tickets" / "client-uids.md",
+        client="FrontierMode", title="FM root", owner="Arryn",
+    )
+    roles_create.create_role(roles_root=tmp_path / "backhaul" / "roles", title="QA", slug="qa")
+
+    assert main(["--config", str(cfg_path), "refresh"]) == 0
+
+    roadmap_index = (tmp_path / "backhaul" / "ROADMAP_INDEX.md").read_text(encoding="utf-8")
+    assert "RM_FRO_001" in roadmap_index
+    roles_index = (tmp_path / "backhaul" / "ROLES_INDEX.md").read_text(encoding="utf-8")
+    assert "QA" in roles_index
+    dashboard_content = (tmp_path / "BACKHAUL.md").read_text(encoding="utf-8")
+    assert "[Roadmap](backhaul/ROADMAP_INDEX.md)" in dashboard_content
+    assert "[Team](backhaul/ROLES_INDEX.md)" in dashboard_content
+
+
+def test_cli_refresh_reports_lint_findings_but_still_succeeds(tmp_path: Path, capsys):
+    cfg_path = _write_config(tmp_path)
+    wiki_root = tmp_path / "backhaul" / "wiki" / "meta"
+    wiki_root.mkdir(parents=True)
+    (wiki_root / "lonely.md").write_text("# Lonely\n", encoding="utf-8")
+
+    assert main(["--config", str(cfg_path), "refresh"]) == 0
+    out = capsys.readouterr().out
+    assert "lint: 1 finding(s)" in out
+    assert "lonely.md" in out
+
+
+def test_cli_refresh_shows_build_ready_when_configured(tmp_path: Path):
+    cfg_path = _write_config(tmp_path)
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["build_ready"] = "notReady"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    assert main(["--config", str(cfg_path), "refresh"]) == 0
+    content = (tmp_path / "BACKHAUL.md").read_text(encoding="utf-8")
+    assert "**Build status: Not ready**" in content
+
+
+def test_cli_refresh_lint_clean_reports_ok(tmp_path: Path, capsys):
+    cfg_path = _write_config(tmp_path)
+    wiki_root = tmp_path / "backhaul" / "wiki" / "meta"
+    wiki_root.mkdir(parents=True)
+    (wiki_root / "hub.md").write_text("# Hub\n\n[Target](target.md)\n", encoding="utf-8")
+    (wiki_root / "target.md").write_text("# Target\n\n[Back](hub.md)\n", encoding="utf-8")
+
+    assert main(["--config", str(cfg_path), "refresh"]) == 0
+    assert "lint: OK, no findings." in capsys.readouterr().out
 
 
 def test_cli_projects_lists_registered(tmp_path: Path, monkeypatch, capsys):

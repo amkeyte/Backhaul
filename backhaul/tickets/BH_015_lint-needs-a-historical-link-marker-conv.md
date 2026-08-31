@@ -3,7 +3,7 @@ id: BH_015
 uid: BH
 number: 15
 client: BH
-status: open
+status: done
 title: lint needs a historical-link marker convention
 context: 'Two permanent classes of correct-but-flagged content mean lint''s broken-link
   count can never reach zero: illustrative link syntax in prose, and deliberately-dangling
@@ -11,7 +11,7 @@ context: 'Two permanent classes of correct-but-flagged content mean lint''s brok
   marker beats a per-path ignore list. See BKHL_007 (mcRepos).'
 priority: normal
 opened: '2026-08-24'
-closed: null
+closed: '2026-08-28'
 ---
 
 <!-- board:start -->

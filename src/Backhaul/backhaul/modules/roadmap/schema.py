@@ -15,8 +15,13 @@ KINDS = ("work", "convergence")
 
 #: Work nodes are terminal once left "open" — "resolved"/"superseded" are permanent.
 WORK_STATES = ("open", "resolved", "superseded")
-#: Convergence nodes are the one place status is genuinely reversible.
-CONVERGENCE_STATES = ("WIP", "reached")
+#: Convergence nodes are reversible between WIP/reached, but "superseded" is a third, terminal
+#: exit for a convergence kept on disk but no longer meaningful (see BH_013) — reuses the same
+#: value work nodes already use for the equivalent case (project owner's call: one terminal-exit
+#: vocabulary, not a convergence-specific name), and validate()'s existing
+#: `superseded requires superseded_by` check below already applies to both kinds unconditionally,
+#: so no kind-specific special-casing was needed to add this.
+CONVERGENCE_STATES = ("WIP", "reached", "superseded")
 
 #: Statuses that still count as "not yet settled" for a given kind — used by graph.py's
 #: frontier/actionable computation (work: open; convergence: WIP).

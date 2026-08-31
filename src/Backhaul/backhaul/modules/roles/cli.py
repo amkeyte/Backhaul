@@ -12,6 +12,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from backhaul.foundation import build_info as _build_info
 from backhaul.foundation import config as _config
 from backhaul.foundation import frontmatter as _frontmatter
 from backhaul.foundation import projects as _projects
@@ -34,13 +35,11 @@ class RolesCliError(Exception):
 
 
 def _resolve_config_path(args: argparse.Namespace) -> Path:
-    """Resolve --project (a name from config/projects.json) or --config (a raw path) to a
-    config.local.json path. Neither given falls back to this checkout's own config."""
-    if args.project:
-        return _projects.resolve_project_config(_PROJECTS_PATH, args.project)
-    if args.config:
-        return Path(args.config)
-    return _DEFAULT_CONFIG_PATH
+    """Resolve --project / --config / an upward cwd search / this checkout's own default.
+    Shared implementation: foundation.config.resolve_config_path (see BH_019)."""
+    return _config.resolve_config_path(
+        args, default_config_path=_DEFAULT_CONFIG_PATH, projects_path=_PROJECTS_PATH
+    )
 
 
 def _load_enabled_config(args: argparse.Namespace) -> dict:
@@ -97,6 +96,7 @@ def _cmd_new(args: argparse.Namespace) -> int:
         authority=args.authority,
         reports_to=args.reports_to,
         status=args.status,
+        launch_target=args.launch_target,
     )
     _header.refresh_header(
         path, _index_path(roles_root),
@@ -182,6 +182,10 @@ def _cmd_projects(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="bhrole", description="BackhaulRole — agent-role page CLI.")
+    p.add_argument(
+        "--version", action="version", version=_build_info.format_version_string("bhrole"),
+        help="Print package version (plus branch/commit when running from a git checkout) and exit.",
+    )
     location = p.add_mutually_exclusive_group()
     location.add_argument("--project", default=None, help="Named project from config/projects.json (see `bhrole projects`).")
     location.add_argument("--config", default=None, help="Explicit path to a config.local.json. Defaults to this checkout's own config if neither --project nor --config is given.")
@@ -195,6 +199,10 @@ def main(argv: list[str] | None = None) -> int:
     p_new.add_argument("--authority", default=None, help="Free text — what this role can decide/block vs. propose.")
     p_new.add_argument("--reports-to", default=None, help="Another role's slug, if this one reports to it.")
     p_new.add_argument("--status", default="active", choices=["active", "retired"])
+    p_new.add_argument(
+        "--launch-target", default="cowork", choices=["cowork", "code"],
+        help="Which claude:// deep link the Launch column opens. Defaults to \"cowork\".",
+    )
     p_new.set_defaults(func=_cmd_new)
 
     p_index = sub.add_parser("index", help="Rebuild the roster (ROLES_INDEX.md).")
@@ -214,7 +222,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     try:
         return args.func(args)
-    except RolesCliError as e:
+    except (RolesCliError, _config.ConfigError, _projects.ProjectsError) as e:
         print(f"FAIL: {e}", file=sys.stderr)
         return 1
 

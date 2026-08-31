@@ -16,6 +16,7 @@ import re
 import sys
 from pathlib import Path
 
+from backhaul.foundation import build_info as _build_info
 from backhaul.foundation import config as _config
 from backhaul.foundation import frontmatter as _frontmatter
 from backhaul.foundation import projects as _projects
@@ -39,13 +40,11 @@ class RoadmapCliError(Exception):
 
 
 def _resolve_config_path(args: argparse.Namespace) -> Path:
-    """Resolve --project (a name from config/projects.json) or --config (a raw path) to a
-    config.local.json path. Neither given falls back to this checkout's own config."""
-    if args.project:
-        return _projects.resolve_project_config(_PROJECTS_PATH, args.project)
-    if args.config:
-        return Path(args.config)
-    return _DEFAULT_CONFIG_PATH
+    """Resolve --project / --config / an upward cwd search / this checkout's own default.
+    Shared implementation: foundation.config.resolve_config_path (see BH_019)."""
+    return _config.resolve_config_path(
+        args, default_config_path=_DEFAULT_CONFIG_PATH, projects_path=_PROJECTS_PATH
+    )
 
 
 def _load_enabled_config(args: argparse.Namespace) -> dict:
@@ -186,8 +185,22 @@ def _cmd_convergence_bypass(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_superseded_refs(args: argparse.Namespace) -> int:
+    cfg = _load_enabled_config(args)
+    nodes = _load_graph_for_uid(cfg, args.uid)
+    for referencing_id, superseded_id in _graph.find_stale_superseded_refs(nodes):
+        print(f"{referencing_id}\t{superseded_id}")
+    return 0
+
+
 def _cmd_render(args: argparse.Namespace) -> int:
     cfg = _load_enabled_config(args)
+    if args.output and Path(args.output).suffix.lower() == ".html":
+        raise RoadmapCliError(
+            f"{args.output!r} ends in .html, but `render` always writes markdown — pointing it "
+            f"at an HTML path silently overwrites a generated graph with markdown. Use `bhrm "
+            f"index` to (re)generate the HTML graph view instead (see BH_012/BKHL_008)."
+        )
     nodes = _load_graph_for_uid(cfg, args.uid)
     # Links need to know where the doc will actually live — default to the same convention
     # ROADMAP_INDEX.md uses (one level above the node files) even for a stdout dump, since
@@ -294,6 +307,10 @@ def _cmd_projects(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="bhrm", description="BackhaulRoadmap — dependency-graph roadmap CLI.")
+    p.add_argument(
+        "--version", action="version", version=_build_info.format_version_string("bhrm"),
+        help="Print package version (plus branch/commit when running from a git checkout) and exit.",
+    )
     location = p.add_mutually_exclusive_group()
     location.add_argument("--project", default=None, help="Named project from config/projects.json (see `bhrm projects`).")
     location.add_argument("--config", default=None, help="Explicit path to a config.local.json. Defaults to this checkout's own config if neither --project nor --config is given.")
@@ -337,6 +354,13 @@ def main(argv: list[str] | None = None) -> int:
     p_conv.add_argument("--uid", required=True)
     p_conv.set_defaults(func=_cmd_convergence_bypass)
 
+    p_stale = sub.add_parser(
+        "superseded-refs",
+        help="List DependsOn edges naming a superseded node (advisory, never blocks).",
+    )
+    p_stale.add_argument("--uid", required=True)
+    p_stale.set_defaults(func=_cmd_superseded_refs)
+
     p_render = sub.add_parser("render", help="Generate the crawlable markdown index for one UID.")
     p_render.add_argument("--uid", required=True)
     p_render.add_argument("--output", default=None, help="Write to this path instead of stdout.")
@@ -374,7 +398,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     try:
         return args.func(args)
-    except RoadmapCliError as e:
+    except (RoadmapCliError, _config.ConfigError, _projects.ProjectsError) as e:
         print(f"FAIL: {e}", file=sys.stderr)
         return 1
 

@@ -60,7 +60,12 @@ next time they're touched, not urgent enough to warrant a dedicated pass on its 
 
 - **work**: `open` -> `resolved` | `superseded` (terminal once left `open`).
 - **convergence**: `WIP` <-> `reached` (reversible — a milestone can un-converge on real
-  evidence of a gap, with a `ReachedLog` recording every time it was reached, never erased).
+  evidence of a gap, with a `ReachedLog` recording every time it was reached, never erased), plus
+  a third, terminal exit: `superseded` (see BH_013 below) for a convergence node kept on disk but
+  no longer meaningful — reuses the same value work nodes already use for the equivalent case
+  rather than a convergence-specific name.
+- Whatever the kind, `status: superseded` always requires `superseded_by` to be set —
+  `validate()` rejects a `superseded` node with no pointer to what replaced it.
 
 ## HTML graph view (bhrm render-html)
 
@@ -103,6 +108,28 @@ The full `Visualize` line from the original node-format-spec.md (wired into ever
 header, not just the index) is still deliberately not built — a narrower version of that idea,
 scoped to the index only, is what shipped here.
 
+## render vs. index — different commands write different things (BH_012)
+
+`render` always writes markdown, whether printed to stdout or sent to `--output`. `render`
+refuses a `--output` path ending in `.html` rather than silently overwriting a generated graph
+with markdown — this used to be possible and cost a real clobbered graph in a consumer project
+before the guard existed (see BKHL_008). To regenerate a UID's HTML graph, use `bhrm index`
+(§ HTML graph view above) — it's the only command that writes `ROADMAP_GRAPH_<uid>.html`.
+
+## Required By regenerates automatically (BH_011)
+
+Every node's `## Required By` section is a marked block (`<!-- required-by:start -->`/`:end`),
+rewritten unconditionally on every `bhrm index`/`refresh` call — same "unconditional, every run"
+discipline BH_008 already established for the HTML graph view. Lists every node whose own
+`depends_on` names this one, computed from `dependents()` (already correct, already tested — the
+only gap was that nothing wrote it back into the file). Shows the placeholder text (*"nothing
+depends on this yet"*) when the list is empty. A node created before this shipped, with a
+freehand (unmarked) `## Required By` section, gets migrated in place the first time `index`/
+`refresh` touches it — the stale placeholder is replaced, not left duplicated alongside a new
+block. Not wired into `bhrm new` — a brand-new node can't have existing dependents by definition,
+so the template's own default state is already correct; run `index`/`refresh` after minting a node
+with `--depends-on` to see the ancestor's Required By update.
+
 ## Convergence-bypass check (advisory)
 
 `bhrm convergence-bypass --uid RM_XXX` lists `DependsOn` edges that reach back into a
@@ -124,6 +151,90 @@ This is separate from `bhrm validate` on purpose — `validate`'s contract is "r
 silent otherwise," a hard error; this is advisory and never blocks anything, so it stays its
 own command rather than changing what `validate` means.
 
+## Convergence terminal status + stale-reference check (BH_013)
+
+A convergence node can now retire the same way a work node does: `status: superseded` +
+`superseded_by: <replacement ID>`, permanent, same as work's own `superseded` exit. A superseded
+convergence node is never actionable and never appears in `frontier` — same treatment `reached`
+already gets, just one more terminal state `is_actionable`/`frontier` know to skip.
+
+`bhrm superseded-refs --uid RM_XXX` lists every direct `DependsOn` edge that names a node — work
+or convergence — whose own `status` is `superseded`. Output is one line per
+`(referencing_id, superseded_id)` pair, same worklist style as `convergence-bypass`: advisory,
+never raises, never blocks. This exists because `blocking()` alone doesn't distinguish an
+ordinary open dependency from one that's permanently stuck — `SATISFYING_STATUS` never includes
+`superseded`, so a stale edge just looks blocked forever unless something flags it explicitly.
+
+Scoped to direct `depends_on` edges within one UID's graph only — it does not follow wiki or
+ticket prose links that happen to mention a superseded node's ID (that would need
+`foundation/lint.py`'s broken-link machinery, out of scope for this check).
+
+## Epoch maintenance nodes (containers) (BH_021)
+
+An **epoch** is the span of work between two convergence nodes, named for the one that opens it.
+Real work inside an epoch isn't always feature-shaped: a ruling's blast radius turns out to reach
+past the ticket that provoked it, a build turns up a bug against something unrelated, a later
+node casts doubt on an earlier one's done bar. That work still needs a place to live on the
+graph — otherwise it only exists by being found in the tickets folder, which is exactly the
+"search to find it" problem this convention exists to remove. Backported from a consumer
+project's live usage (mcRepos) rather than designed up front — see that project's own
+`wiki/meta/bhrm.md#epoch-maintenance-nodes-containers` for the original writeup this section
+condenses.
+
+**A maintenance node (a "container") is an ordinary `kind: work` node that doesn't represent a
+design goal.** No schema change — it gets a slug keyed to the epoch instead of a persona name:
+`<epoch>-01`, `<epoch>-02`, etc., e.g. `susan-01`. It doesn't carry a `ticket:` field, the same
+way a convergence node doesn't — `ticket: null` — since what actually landed on it is tracked in
+its own log; a container can gather more than one ticket over its life, and a single frontmatter
+pointer would misrepresent that. No new `kind` value for these — they render in the graph like
+any other `work` node for now. A dedicated `kind: maintenance` (with its own reversible
+`collecting <-> clear` status pair, mirroring convergence's `WIP <-> reached`, plus a distinct
+color/shape in `bhrm index`'s HTML output) is worth revisiting once the pattern has proven out
+across more than one project — deliberately not built yet.
+
+**Every epoch gets two standing containers by default: a start container and an end container,**
+opened together rather than waited on until something obviously needs one — cheap to have sitting
+there empty, expensive to reconstruct after the fact once nobody remembers the epoch had a start.
+The start container is where early-epoch rework tends to land; the end container is the epoch's
+review/fix gate, where things too small or too unrelated to block whatever's currently being
+built get dropped instead of stalling it — the epoch's next planned node depends on the end
+container clearing, so nothing carries forward unaddressed. Additional containers get inserted in
+the middle only when a set of tickets is big enough to warrant its own marker — a judgment call
+each time, not an automatic trigger.
+
+**Wiring is real, not decorative.** A `depends_on` edge onto a container means the dependent is
+genuinely blocked on it clearing, same as any other node. Reopening a `resolved` node on real
+evidence (a container's work casting doubt on an earlier node's done bar) is the intended
+mechanism for regression work, not a violation of history — logged as a new dated entry on the
+reopened node itself, cross-referenced from the container that forced it. Regression doubt is
+chased back one hop only, for now; doubt about something further back gets named and logged as
+accepted risk rather than triggering a deeper sweep.
+
+**A container's `status` tracks whether it's currently blocking anything, not whether every
+ticket ever logged on it is closed.** Flip `resolved` once nothing currently gating a dependent
+remains open; non-blocking content can stay logged and open underneath that without holding the
+flip back. **Required when that happens: a `Deferred, non-blocking:` callout at the top of the
+container's body** — a short bullet list of what's still open and why it isn't holding the
+status back, so a reader doesn't have to read the full log to find loose ends. This is a
+body-content convention, not a schema field; nothing enforces it mechanically today (the
+first-class `kind: maintenance` mentioned above would make it structural instead).
+
+**Ticket-side signal: a `[<Container>]` prefix on the ticket's own `context`.** The container's
+callout is the record that a ticket is attached, but it only reaches a reader who opens the
+roadmap node — `BOARD.md` is what actually gets scanned day to day, and without a matching
+signal there a container-attached ticket reads exactly like a loose one still waiting on someone.
+Prepend `[<Epoch>_<NN>]` (the container's persona name, capitalized, plus its two-digit sequence,
+matching its slug — `susan-02` -> `[Susan_02]`) to the front of the ticket's `context` field. This
+is a BHT `context`-field convention, not a wiki-page one, and shares `bht.md`'s ~100-character
+length standard — trim surrounding wording to make room rather than skip the tag.
+
+Three things intentionally left open for now, matching the source ticket's own framing (worth an
+opinion once more than one project has exercised the plain-`work` version, not decided
+speculatively): whether this stays a documentation/naming convention or earns the first-class
+`kind: maintenance` described above; whether `bhrm new` should grow an ergonomic shortcut for
+minting the standing start+end pair together (today it's two ordinary `bhrm new --kind work`
+calls); and what advisory checks (if any) would make sense once/if the schema lands.
+
 ## CLI cheatsheet
 
 ```
@@ -132,7 +243,8 @@ bhrm validate --uid RM_XXX
 bhrm frontier --uid RM_XXX
 bhrm dependents <ID>   |   bhrm downstream <ID>   |   bhrm blocking <ID>
 bhrm convergence-bypass --uid RM_XXX
-bhrm render --uid RM_XXX [--output PATH] [--title "..."]
+bhrm superseded-refs --uid RM_XXX
+bhrm render --uid RM_XXX [--output PATH] [--title "..."]   # writes MARKDOWN -- refuses a .html --output (use `index` for that)
 bhrm render-html --uid RM_XXX [--output PATH] [--title "..."]
 bhrm export-json --uid RM_XXX [--out PATH]
 bhrm index [--output PATH] [--title "..."]    # every UID's graph, its own section

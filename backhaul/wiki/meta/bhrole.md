@@ -66,6 +66,12 @@ verbatim and build a `claude://cowork/new?q=<prompt>` link — clicking it opens
 session with the bootstrap prompt already in the composer, ready to review and send. A role
 page with no bootstrap-prompt section just gets no Launch link — never a hard error.
 
+**A role can open Claude Code instead of Cowork (BH_003).** Set `launch_target: code` in a role
+page's frontmatter (`--launch-target code` at `bhrole new`) and its Launch link builds
+`claude://code/new?q=<prompt>` instead — same prompt-extraction and preamble logic either way,
+just a different `claude://` host segment. Defaults to `cowork` (this module's only prior
+behavior), so every existing role page is unaffected until it opts in.
+
 Keep the fenced block as the literal text you want pasted in; don't wrap it in extra prose,
 since `bhrole` extracts it byte-for-byte.
 
@@ -133,12 +139,13 @@ longer name.
 ## Frontmatter fields
 
 `slug`, `title` (required); `persona`, `purpose`, `authority`, `reports_to`, `status`
-(`active`/`retired`), `updated`. Only `active` roles count toward the dashboard's `Team` line.
+(`active`/`retired`), `launch_target` (`cowork`/`code`, see above), `updated`. Only `active`
+roles count toward the dashboard's `Team` line.
 
 ## CLI cheatsheet
 
 ```
-bhrole new --title "..." [--slug slug] [--persona name] [--purpose "..."] [--authority "..."] [--reports-to slug] [--status active|retired]
+bhrole new --title "..." [--slug slug] [--persona name] [--purpose "..."] [--authority "..."] [--reports-to slug] [--status active|retired] [--launch-target cowork|code]
 bhrole index [--output PATH] [--title "..."]   # rebuild ROLES_INDEX.md
 bhrole refresh                                  # recompute headers + rebuild the roster
 bhrole projects

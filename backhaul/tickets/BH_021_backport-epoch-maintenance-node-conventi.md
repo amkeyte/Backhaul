@@ -3,14 +3,14 @@ id: BH_021
 uid: BH
 number: 21
 client: BH
-status: open
+status: done
 title: Backport epoch-maintenance-node convention to defaults
 context: mcRepos worked out a real convention for unplanned rework containers on the
   roadmap graph, live, over several rounds -- worth landing in Backhaul's own default
   docs/templates so future projects don't re-derive it. See BKHL_017 (mcRepos).
 priority: normal
 opened: '2026-08-28'
-closed: null
+closed: '2026-08-28'
 ---
 
 <!-- board:start -->

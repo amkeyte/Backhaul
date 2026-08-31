@@ -3,13 +3,13 @@ id: BH_018
 uid: BH
 number: 18
 client: BH
-status: open
+status: done
 title: bht open should warn on oversized title/context
 context: bht.md's own 40/100-char guideline isn't checked on write; nothing signals
   a caller went over until someone eyeballs the rendered board. See BKHL_013 (mcRepos).
 priority: low
 opened: '2026-08-28'
-closed: null
+closed: '2026-08-28'
 ---
 
 <!-- board:start -->

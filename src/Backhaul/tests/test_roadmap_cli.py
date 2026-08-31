@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from backhaul.foundation import frontmatter
-from backhaul.foundation.projects import ProjectsError
 from backhaul.modules.roadmap.cli import main
 
 
@@ -119,6 +118,21 @@ def test_render_includes_links(tmp_path: Path):
     content = out_path.read_text(encoding="utf-8")
     assert "[**RM_ARR_001**](" in content
     assert "RM_ARR_001_alma.md" in content
+
+
+def test_render_rejects_html_output_path(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    # BH_012/BKHL_008: render always writes markdown -- pointing it at a .html path used to
+    # silently overwrite a generated graph.
+    cfg_path = _write_config(tmp_path)
+    main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "X", "--owner", "Arryn"])
+
+    out_path = tmp_path / "graph.html"
+    out_path.write_text("<svg>existing graph</svg>", encoding="utf-8")
+    rc = main(["--config", str(cfg_path), "render", "--uid", "RM_ARR", "--output", str(out_path)])
+    assert rc == 1
+    assert "index" in capsys.readouterr().err
+    # Refused before writing -- the existing file is untouched.
+    assert out_path.read_text(encoding="utf-8") == "<svg>existing graph</svg>"
 
 
 def test_render_html_writes_file(tmp_path: Path):
@@ -304,6 +318,39 @@ def test_convergence_bypass_no_findings_prints_nothing(tmp_path: Path, capsys: p
     assert capsys.readouterr().out == ""
 
 
+def test_superseded_refs_flags_and_prints(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    cfg_path = _write_config(tmp_path)
+
+    main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "Old approach", "--owner", "Arryn"])
+    main([
+        "--config", str(cfg_path), "new", "--client", "Arryn", "--title", "New approach", "--owner", "Arryn",
+    ])
+    main([
+        "--config", str(cfg_path), "new", "--client", "Arryn", "--title", "Still points at old",
+        "--owner", "Arryn", "--depends-on", "RM_ARR_001",
+    ])
+
+    old_path = tmp_path / "content" / "roadmap" / "RM_ARR_001_old-approach.md"
+    doc = frontmatter.parse(old_path)
+    doc.frontmatter["status"] = "superseded"
+    doc.frontmatter["superseded_by"] = "RM_ARR_002"
+    frontmatter.write(doc)
+
+    capsys.readouterr()
+    assert main(["--config", str(cfg_path), "superseded-refs", "--uid", "RM_ARR"]) == 0
+    out = capsys.readouterr().out
+    assert "RM_ARR_003\tRM_ARR_001" in out
+
+
+def test_superseded_refs_no_findings_prints_nothing(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    cfg_path = _write_config(tmp_path)
+    main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "Solo", "--owner", "Arryn"])
+
+    capsys.readouterr()
+    assert main(["--config", str(cfg_path), "superseded-refs", "--uid", "RM_ARR"]) == 0
+    assert capsys.readouterr().out == ""
+
+
 def test_render_and_export_json(tmp_path: Path):
     cfg_path = _write_config(tmp_path)
     main(["--config", str(cfg_path), "new", "--client", "Arryn", "--title", "A", "--owner", "Arryn"])
@@ -371,7 +418,11 @@ def test_project_flag_resolves_via_registry(tmp_path: Path, monkeypatch: pytest.
     assert (tmp_path / "content" / "roadmap" / "RM_ARR_001_x.md").exists()
 
 
-def test_project_flag_unknown_name_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_project_flag_unknown_name_fails_cleanly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """main() catches ProjectsError itself (BH_022) and reports it as a clean FAIL, rather than
+    letting it propagate as a raw exception -- same treatment as a missing/malformed config."""
     registry_path = tmp_path / "projects.json"
     registry_path.write_text(json.dumps({"known": "x"}), encoding="utf-8")
 
@@ -379,8 +430,25 @@ def test_project_flag_unknown_name_raises(tmp_path: Path, monkeypatch: pytest.Mo
 
     monkeypatch.setattr(cli_module, "_PROJECTS_PATH", registry_path)
 
-    with pytest.raises(ProjectsError):
-        main(["--project", "typo", "frontier", "--uid", "RM_TEST"])
+    assert main(["--project", "typo", "frontier", "--uid", "RM_TEST"]) == 1
+    assert "FAIL:" in capsys.readouterr().err
+
+
+def test_missing_config_fails_cleanly_not_a_traceback(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    missing = tmp_path / "nope" / "config.local.json"
+    assert main(["--config", str(missing), "frontier", "--uid", "RM_TEST"]) == 1
+    assert "FAIL:" in capsys.readouterr().err
+
+
+def test_version_flag_prints_prog_and_package_version(capsys: pytest.CaptureFixture[str]):
+    from backhaul import __version__ as package_version
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--version"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "bhrm" in out
+    assert package_version in out
 
 
 def test_projects_command_lists_registered(

@@ -10,7 +10,6 @@ from pathlib import Path
 import pytest
 
 from backhaul.foundation import frontmatter
-from backhaul.foundation.projects import ProjectsError
 from backhaul.modules.roles.cli import main
 
 
@@ -61,6 +60,23 @@ def test_new_creates_role_and_writes_header(tmp_path: Path):
     index_path = tmp_path / "content" / "ROLES_INDEX.md"
     assert index_path.exists()
     assert "QA / Verification" in index_path.read_text(encoding="utf-8")
+
+
+def test_new_defaults_launch_target_to_cowork(tmp_path: Path):
+    cfg_path = _write_config(tmp_path)
+    assert main(["--config", str(cfg_path), "new", "--title", "QA", "--slug", "qa"]) == 0
+    doc = frontmatter.parse(tmp_path / "content" / "roles" / "qa.md")
+    assert doc.frontmatter["launch_target"] == "cowork"
+
+
+def test_new_accepts_launch_target_code(tmp_path: Path):
+    cfg_path = _write_config(tmp_path)
+    assert main([
+        "--config", str(cfg_path), "new", "--title", "Dev", "--slug", "dev",
+        "--launch-target", "code",
+    ]) == 0
+    doc = frontmatter.parse(tmp_path / "content" / "roles" / "dev.md")
+    assert doc.frontmatter["launch_target"] == "code"
 
 
 def test_new_launch_link_includes_pip_install_when_repo_url_configured(tmp_path: Path):
@@ -208,7 +224,11 @@ def test_project_flag_resolves_via_registry(tmp_path: Path, monkeypatch: pytest.
     assert (tmp_path / "content" / "roles" / "qa.md").exists()
 
 
-def test_project_flag_unknown_name_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_project_flag_unknown_name_fails_cleanly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """main() catches ProjectsError itself (BH_022) and reports it as a clean FAIL, rather than
+    letting it propagate as a raw exception -- same treatment as a missing/malformed config."""
     registry_path = tmp_path / "projects.json"
     registry_path.write_text(json.dumps({"known": "x"}), encoding="utf-8")
 
@@ -216,8 +236,25 @@ def test_project_flag_unknown_name_raises(tmp_path: Path, monkeypatch: pytest.Mo
 
     monkeypatch.setattr(cli_module, "_PROJECTS_PATH", registry_path)
 
-    with pytest.raises(ProjectsError):
-        main(["--project", "typo", "index"])
+    assert main(["--project", "typo", "index"]) == 1
+    assert "FAIL:" in capsys.readouterr().err
+
+
+def test_missing_config_fails_cleanly_not_a_traceback(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    missing = tmp_path / "nope" / "config.local.json"
+    assert main(["--config", str(missing), "index"]) == 1
+    assert "FAIL:" in capsys.readouterr().err
+
+
+def test_version_flag_prints_prog_and_package_version(capsys: pytest.CaptureFixture[str]):
+    from backhaul import __version__ as package_version
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--version"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "bhrole" in out
+    assert package_version in out
 
 
 def test_projects_command_lists_registered(

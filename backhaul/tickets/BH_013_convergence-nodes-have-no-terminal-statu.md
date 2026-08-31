@@ -3,7 +3,7 @@ id: BH_013
 uid: BH
 number: 13
 client: BH
-status: open
+status: done
 title: Convergence nodes have no terminal status
 context: 'Convergence kind only has WIP/reached -- a deprecated-but-kept convergence
   has nowhere terminal to go, and superseded_by is stored but never checked for staleness.
@@ -11,7 +11,7 @@ context: 'Convergence kind only has WIP/reached -- a deprecated-but-kept converg
   BKHL_004 (mcRepos).'
 priority: normal
 opened: '2026-08-24'
-closed: null
+closed: '2026-08-28'
 ---
 
 <!-- board:start -->

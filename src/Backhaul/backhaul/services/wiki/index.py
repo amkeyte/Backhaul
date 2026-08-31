@@ -29,9 +29,11 @@ _EDIT_SCHEME = "editmd"
 
 
 def _relpath(target: str | Path, start: str | Path) -> str:
-    """Relative path from directory `start` to `target`, POSIX-style separators. Deliberately
-    NOT resolved — see services/ticket/board.py's _relpath for why (paths are trusted as
-    given, not re-derived against whatever filesystem this code happens to run on)."""
+    """Relative path from directory `start` to `target`, POSIX-style separators. Not resolved:
+    paths passed in are trusted as already-correct absolute paths, so no filesystem
+    re-derivation is needed. (services/ticket/board.py's own `_relpath` does call `.resolve()`
+    — unrelated reasoning specific to that function's own Edit-link building, not a discrepancy
+    worth reconciling, since content roots aren't expected to be symlinked.)"""
     return os.path.relpath(Path(target), Path(start)).replace(os.sep, "/")
 
 

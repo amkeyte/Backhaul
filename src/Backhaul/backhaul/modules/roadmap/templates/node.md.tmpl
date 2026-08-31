@@ -1,10 +1,19 @@
 <!-- bh-header:start -->
 <!-- bh-header:end -->
 
+<!-- Opening a maintenance container instead of a feature node? It's still an ordinary
+     kind: work node -- no schema change needed. Slug it <epoch>-01 / <epoch>-02 / etc.
+     instead of a persona name, leave ticket: unset, and see wiki/meta/bhrm.md#epoch-
+     maintenance-nodes-containers (BH_021) for the full convention (status semantics,
+     the standing start/end pair, depends_on wiring). -->
+
 ## {{ TITLE }}
 
 - {{ DATE }}: Node opened. Kind: {{ KIND }}. Owner: {{ OWNER }}.
 
 ## Required By
 
+<!-- required-by:start -->
 *(computed — nothing depends on this yet)*
+<!-- required-by:end -->
+

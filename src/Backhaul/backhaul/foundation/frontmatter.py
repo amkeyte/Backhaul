@@ -22,6 +22,18 @@ class FrontmatterError(ValueError):
     """Raised when a file doesn't start with a valid `---yaml---` frontmatter block."""
 
 
+class FrontmatterParseError(FrontmatterError):
+    """Raised when a file's `---yaml---` block exists but doesn't parse as valid YAML — e.g. an
+    unquoted scalar containing `: ` (colon-space), which YAML reads as a second mapping key
+    inside the value position. Subclasses FrontmatterError so existing `except FrontmatterError`
+    call sites (e.g. the various `_cmd_refresh` per-file loops, which skip a file that doesn't
+    parse rather than aborting the whole run) keep working unchanged. See BH_020: a writer going
+    through this module's own `serialize()` already can't produce this (yaml.safe_dump quotes
+    a colon-space scalar automatically), so this only ever fires on a hand-edited file — the
+    point of this class over a bare YAMLError is naming *which* file, since a rollup over dozens
+    of files gives no other way to tell."""
+
+
 @dataclass
 class ParsedDoc:
     frontmatter: dict[str, Any] = field(default_factory=dict)
@@ -42,7 +54,14 @@ def parse(path: str | Path) -> ParsedDoc:
         raise FrontmatterError(f"{p}: no leading '---' YAML frontmatter block found")
 
     raw_yaml, body = match.groups()
-    fm = yaml.safe_load(raw_yaml) or {}
+    try:
+        fm = yaml.safe_load(raw_yaml) or {}
+    except yaml.YAMLError as e:
+        raise FrontmatterParseError(
+            f"{p}: frontmatter block is not valid YAML ({e}). A common cause is an unquoted "
+            f"value containing ': ' (colon-space) — YAML reads that as a second mapping key. "
+            f"Quote the value (e.g. title: 'Border load count: client vs server') and retry."
+        ) from e
     if not isinstance(fm, dict):
         raise FrontmatterError(f"{p}: frontmatter block did not parse to a mapping")
 

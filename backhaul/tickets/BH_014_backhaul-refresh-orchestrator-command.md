@@ -3,14 +3,14 @@ id: BH_014
 uid: BH
 number: 14
 client: BH
-status: open
+status: done
 title: backhaul refresh orchestrator command
 context: No single entry point runs bht board + bhw index + bhrm index + bhrole index
   + backhaul dashboard + lint together -- the current five-commands-plus-remember-the-sixth
   shape is what keeps going stale. See BKHL_007 (mcRepos).
 priority: normal
 opened: '2026-08-24'
-closed: null
+closed: '2026-08-28'
 ---
 
 <!-- board:start -->

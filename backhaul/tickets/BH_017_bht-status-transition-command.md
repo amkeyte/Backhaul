@@ -3,14 +3,14 @@ id: BH_017
 uid: BH
 number: 17
 client: BH
-status: open
+status: done
 title: bht status-transition command
 context: open always starts at open, close always ends at done -- in-progress/blocked
   have no command, only hand-edited frontmatter. Same root cause as BH_010. See BKHL_012
   (mcRepos).
 priority: normal
 opened: '2026-08-28'
-closed: null
+closed: '2026-08-28'
 ---
 
 <!-- board:start -->

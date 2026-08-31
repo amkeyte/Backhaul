@@ -137,6 +137,64 @@ def test_find_broken_links_handles_anchor_fragments(tmp_path: Path):
     assert lint.run_lint(cfg, checks=["links"]) == []
 
 
+def test_find_broken_links_skips_marked_historical_link(tmp_path: Path):
+    wiki = tmp_path / "backhaul" / "wiki"
+    _write(
+        wiki / "meta" / "page.md",
+        "# Page\n\n[Old ticket](../tickets/BH_001_gone.md) <!-- historical-link -->\n",
+    )
+
+    cfg = _config(tmp_path)
+    assert lint.run_lint(cfg, checks=["links"]) == []
+
+
+def test_find_broken_links_marker_does_not_suppress_other_links_on_other_lines(tmp_path: Path):
+    wiki = tmp_path / "backhaul" / "wiki"
+    _write(
+        wiki / "meta" / "page.md",
+        "# Page\n\n"
+        "[Old ticket](../tickets/BH_001_gone.md) <!-- historical-link -->\n"
+        "[Still broken](../tickets/BH_002_also-gone.md)\n",
+    )
+
+    cfg = _config(tmp_path)
+    findings = lint.run_lint(cfg, checks=["links"])
+    assert len(findings) == 1
+    assert "BH_002_also-gone.md" in findings[0].message
+
+
+def test_find_broken_links_marker_only_suppresses_same_line(tmp_path: Path):
+    wiki = tmp_path / "backhaul" / "wiki"
+    _write(
+        wiki / "meta" / "page.md",
+        "# Page\n\n"
+        "[Broken](../tickets/BH_001_gone.md)\n"
+        "<!-- historical-link -->\n",
+    )
+
+    cfg = _config(tmp_path)
+    findings = lint.run_lint(cfg, checks=["links"])
+    assert len(findings) == 1
+    assert "BH_001_gone.md" in findings[0].message
+
+
+def test_find_broken_links_marker_does_not_affect_orphaned_check(tmp_path: Path):
+    """The marker only changes broken-link detection — a marked link still counts as a real
+    inbound link for orphan-detection purposes (BH_015 scopes the marker to find_broken_links()
+    only)."""
+    wiki = tmp_path / "backhaul" / "wiki"
+    _write(
+        wiki / "meta" / "page.md",
+        "# Page\n\n[Target](../overview/target.md) <!-- historical-link -->\n",
+    )
+    _write(wiki / "overview" / "target.md", "# Target\n")
+
+    cfg = _config(tmp_path)
+    findings = lint.run_lint(cfg, checks=["orphaned"])
+    orphan_names = {f.path.name for f in findings}
+    assert "target.md" not in orphan_names
+
+
 # --- content-root gating (mirrors dashboard.py's roadmap/roles gating) -----------------------
 
 

@@ -12,9 +12,14 @@ import json
 import sys
 from pathlib import Path
 
+from backhaul.foundation import build_info as _build_info
 from backhaul.foundation import config as _config
 from backhaul.foundation import lint as _lint
 from backhaul.foundation import projects as _projects
+from backhaul.modules.roadmap import graph as _roadmap_graph
+from backhaul.modules.roles import index as _roles_index
+from backhaul.services.ticket import board as _ticket_board
+from backhaul.services.wiki import index as _wiki_index
 
 from . import dashboard as _dashboard
 
@@ -25,13 +30,11 @@ _PROJECTS_PATH = _REPO_ROOT / "config" / "projects.json"
 
 
 def _resolve_config_path(args: argparse.Namespace) -> Path:
-    """Same resolution rule as bht/bhw: --project (name from config/projects.json), or
-    --config (raw path), or fall back to this checkout's own config."""
-    if args.project:
-        return _projects.resolve_project_config(_PROJECTS_PATH, args.project)
-    if args.config:
-        return Path(args.config)
-    return _DEFAULT_CONFIG_PATH
+    """Resolve --project / --config / an upward cwd search / this checkout's own default.
+    Shared implementation: foundation.config.resolve_config_path (see BH_019)."""
+    return _config.resolve_config_path(
+        args, default_config_path=_DEFAULT_CONFIG_PATH, projects_path=_PROJECTS_PATH
+    )
 
 
 def _cmd_dashboard(args: argparse.Namespace) -> int:
@@ -82,8 +85,97 @@ def _cmd_dashboard(args: argparse.Namespace) -> int:
         roles_root=roles_root,
         roles_index_path=roles_index_path,
         project_name=_config.get_project_name(cfg),
+        build_ready=_config.get_build_ready(cfg),
     )
     print(f"OK: wrote dashboard to {output_path}")
+    return 0
+
+
+def _cmd_refresh(args: argparse.Namespace) -> int:
+    """One-command project refresh (BH_014): rebuild every enabled service's index, run lint
+    advisory-only, then rebuild the dashboard — same end state as running each service's own
+    `refresh`/`index` command by hand, in the right order, without having to know which
+    commands exist or which modules are enabled.
+
+    Mirrors `_cmd_dashboard`'s own content-root/enabled-module resolution so a project with
+    `enabled_modules: []` for roadmap/roles just skips those steps cleanly rather than erroring.
+    Lint findings are printed but never fail this command — lint is diagnostic, not a gate.
+    """
+    cfg = _config.load_config(_resolve_config_path(args))
+    tickets_root = Path(cfg["content_roots"]["tickets"])
+    wiki_root = Path(cfg["content_roots"]["wiki"])
+    host_root = _config.get_host_root(cfg)
+    project_name = _config.get_project_name(cfg)
+
+    board_path = tickets_root.parent / "BOARD.md"
+    index_path = wiki_root.parent / "WIKI_INDEX.md"
+    output_path = tickets_root.parent.parent / "BACKHAUL.md"
+
+    _ticket_board.build_board(
+        tickets_root, board_path,
+        dashboard_path=output_path, project_name=project_name, host_root=host_root,
+    )
+    _wiki_index.build_index(
+        wiki_root, index_path,
+        dashboard_path=output_path, project_name=project_name, host_root=host_root,
+    )
+
+    enabled_modules = _config.get_enabled_modules(cfg)
+    content_roots = cfg.get("content_roots", {})
+
+    roadmap_root = None
+    roadmap_index_path = None
+    if "roadmap" in content_roots and "roadmap" in enabled_modules:
+        roadmap_root = Path(content_roots["roadmap"])
+        roadmap_index_path = roadmap_root.parent / "ROADMAP_INDEX.md"
+        try:
+            _roadmap_graph.build_index(
+                roadmap_root, roadmap_index_path,
+                dashboard_path=output_path, project_name=project_name,
+            )
+        except _roadmap_graph.GraphError as e:
+            print(f"FAIL: roadmap index: {e}", file=sys.stderr)
+            return 2
+
+    roles_root = None
+    roles_index_path = None
+    if "roles" in content_roots and "roles" in enabled_modules:
+        roles_root = Path(content_roots["roles"])
+        roles_index_path = roles_root.parent / "ROLES_INDEX.md"
+        roles_project_root = host_root if host_root is not None else roles_root.parent.parent
+        _roles_index.build_index(
+            roles_root, roles_index_path,
+            dashboard_path=output_path, project_name=project_name,
+            project_root=roles_project_root, repo_url=_config.get_repo_url(cfg),
+            host_root=host_root,
+        )
+
+    try:
+        findings = _lint.run_lint(cfg)
+    except _lint.LintError as e:
+        print(f"warning: lint could not run: {e}", file=sys.stderr)
+        findings = []
+    if findings:
+        print(f"lint: {len(findings)} finding(s) (advisory, not blocking refresh):")
+        for f in findings:
+            print(f"  {f}")
+    else:
+        print("lint: OK, no findings.")
+
+    _dashboard.build_dashboard(
+        tickets_root=tickets_root,
+        wiki_root=wiki_root,
+        board_path=board_path,
+        index_path=index_path,
+        output_path=output_path,
+        roadmap_root=roadmap_root,
+        roadmap_index_path=roadmap_index_path,
+        roles_root=roles_root,
+        roles_index_path=roles_index_path,
+        project_name=project_name,
+        build_ready=_config.get_build_ready(cfg),
+    )
+    print(f"OK: refreshed board, wiki index, roadmap/roles (if enabled), lint, and dashboard at {output_path}")
     return 0
 
 
@@ -121,6 +213,10 @@ def _cmd_projects(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="backhaul", description="Backhaul — cross-service commands.")
+    p.add_argument(
+        "--version", action="version", version=_build_info.format_version_string("backhaul"),
+        help="Print package version (plus branch/commit when running from a git checkout) and exit.",
+    )
     location = p.add_mutually_exclusive_group()
     location.add_argument("--project", default=None, help="Named project from config/projects.json.")
     location.add_argument("--config", default=None, help="Explicit path to a config.local.json.")
@@ -129,6 +225,12 @@ def main(argv: list[str] | None = None) -> int:
     p_dash = sub.add_parser("dashboard", help="Rebuild BACKHAUL.md (links to the board + wiki index).")
     p_dash.add_argument("--output", default=None, help="Defaults to the backhaul data folder's parent / BACKHAUL.md.")
     p_dash.set_defaults(func=_cmd_dashboard)
+
+    p_refresh = sub.add_parser(
+        "refresh",
+        help="Rebuild board, wiki index, roadmap/roles indexes (if enabled), run lint (advisory), rebuild the dashboard.",
+    )
+    p_refresh.set_defaults(func=_cmd_refresh)
 
     p_lint = sub.add_parser("lint", help="Audit content for orphaned pages and broken links.")
     p_lint.add_argument(
@@ -142,7 +244,11 @@ def main(argv: list[str] | None = None) -> int:
     p_proj.set_defaults(func=_cmd_projects)
 
     args = p.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (_config.ConfigError, _projects.ProjectsError) as e:
+        print(f"FAIL: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

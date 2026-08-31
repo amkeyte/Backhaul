@@ -3,14 +3,14 @@ id: BH_012
 uid: BH
 number: 12
 client: BH
-status: open
+status: done
 title: bhrm render --output ignores file extension
 context: render writes markdown regardless of --output's extension; pointing it at
   a .html path silently clobbers a generated HTML graph with no warning, exit 0. Hit
   live in mcRepos, both graphs clobbered once. See BKHL_008 (mcRepos).
 priority: normal
 opened: '2026-08-24'
-closed: null
+closed: '2026-08-28'
 ---
 
 <!-- board:start -->

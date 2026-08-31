@@ -8,9 +8,14 @@
   is a hard error, not a cross-project link — "one node system each" per client/mod, enforced
   here rather than left as a convention.
 
-Read-only against node files. Never writes. Never makes a judgment call — computes lists for a
-human to judge, same boundary the original spec held itself to (graph-tooling-spec.md's Purpose
-section, echoing qa.md's "script output becomes the evidence for verdicts, not raw code reads").
+Never makes a judgment call — computes lists for a human to judge, same boundary the original
+spec held itself to (graph-tooling-spec.md's Purpose section, echoing qa.md's "script output
+becomes the evidence for verdicts, not raw code reads"). The query functions (frontier,
+dependents, downstream, blocking, ancestors, find_convergence_bypasses) are pure reads. build_index()
+does write — the combined index and every UID's HTML graph view directly, plus each node's own
+`## Required By` block via modules.roadmap.header.refresh_required_by() (BH_011) rather than
+touching node frontmatter/body itself here — this module never mutates a node file's own content
+directly, only ever through that dedicated writer.
 
 Deliberately does NOT use foundation.rollup.collect() here, unlike board.py/index.py — collect()
 silently skips a file that fails frontmatter parsing (right for a board/index tolerating a stray
@@ -29,15 +34,18 @@ from typing import Any
 from backhaul.foundation import filesafety, header
 from backhaul.foundation import frontmatter as _frontmatter
 
+from . import header as _node_header
 from .schema import OPEN_STATUS, RoadmapNodeFrontmatter, RoadmapValidationError, validate
 
 SATISFIED_STATUSES = frozenset({"resolved", "reached"})
 
 
 def _relpath(target: str | Path, start: str | Path) -> str:
-    """Relative path from directory `start` to `target`, POSIX-style separators. Deliberately
-    NOT resolved — same reasoning as services/ticket/board.py's _relpath (paths are trusted as
-    given, not re-derived against whatever filesystem this code happens to run on)."""
+    """Relative path from directory `start` to `target`, POSIX-style separators. Not resolved:
+    paths passed in are trusted as already-correct absolute paths, so no filesystem
+    re-derivation is needed. (services/ticket/board.py's own `_relpath` does call `.resolve()`
+    — unrelated reasoning specific to that function's own Edit-link building, not a discrepancy
+    worth reconciling, since content roots aren't expected to be symlinked.)"""
     return os.path.relpath(Path(target), Path(start)).replace(os.sep, "/")
 
 
@@ -285,6 +293,35 @@ def find_convergence_bypasses(nodes: dict[str, Node]) -> list[tuple[str, str, li
     return sorted(findings, key=lambda finding: (finding[0], finding[1]))
 
 
+def find_stale_superseded_refs(nodes: dict[str, Node]) -> list[tuple[str, str]]:
+    """Advisory list of (referencing_node_id, superseded_node_id) pairs, one per direct
+    `depends_on` edge that names a node whose own `status` is `superseded` (either kind — see
+    BH_013's addition of `superseded` to CONVERGENCE_STATES). Sibling to
+    find_convergence_bypasses(), same discipline: never raises, computes a list for a human to
+    judge, doesn't try to guess whether the dependency should be rerouted or the block is
+    actually intentional.
+
+    Why this needs its own check rather than relying on blocking(): `blocking()` already lists
+    every unsatisfied ancestor, but doesn't distinguish *why* — an ordinary still-open dependency
+    (which will eventually clear) looks the same in that output as a superseded one (which can
+    never clear on its own, since SATISFIED_STATUSES doesn't include "superseded" — the
+    dependency is permanently stuck until someone acts). That distinction is the actual signal
+    worth surfacing.
+
+    Scoped to direct `depends_on` edges within this one graph — not wiki/ticket prose links,
+    which would need foundation/lint.py's cross-content-root scanning machinery, a larger scope
+    than this pass covers. A superseded node's transitive descendants will each surface their own
+    direct edge to it (or to whatever's between them) when this runs against them in turn, so a
+    direct-only scan doesn't miss the deeper chain, just reports it at each hop rather than once.
+    """
+    findings: list[tuple[str, str]] = []
+    for node in sorted(nodes.values(), key=lambda n: n.id):
+        for dep_id in node.depends_on:
+            if nodes[dep_id].status == "superseded":
+                findings.append((node.id, dep_id))
+    return findings
+
+
 def _depth(nodes: dict[str, Node], nid: str, cache: dict[str, int]) -> int:
     """Longest path from a root (a node with no DependsOn) to nid, for render()'s indentation."""
     if nid in cache:
@@ -471,6 +508,17 @@ def build_index(
         html = render_html(nodes, title=f"{project_name} — {uid} Roadmap")
         filesafety.safe_write(output_dir / html_graph_filename(uid), html, overwrite=True)
 
+        # Required By (BH_011): same "unconditional, every run" discipline BH_008 already
+        # established for the HTML graph above — dependents() is cheap and already correct, the
+        # gap was only ever that nothing wrote it back into each node's own file. Delegates the
+        # actual write to modules.roadmap.header (graph.py itself never writes to a node file
+        # directly, see this module's own docstring) — computed here since this loop already has
+        # the loaded graph in scope, avoiding a second load per node.
+        for nid, node in nodes.items():
+            dep_ids = dependents(nodes, nid)
+            dep_tuples = [(did, nodes[did].title, nodes[did].path) for did in dep_ids]
+            _node_header.refresh_required_by(node.path, dep_tuples)
+
     content = render_index(
         nodes_root, title=title, output_dir=output_dir,
         dashboard_path=dashboard_path, project_name=project_name,
@@ -559,14 +607,22 @@ def _html_layout(nodes: dict[str, Node]) -> tuple[dict[str, Position], float, fl
 def _html_color(node: Node, actionable: bool) -> tuple[str, str, str]:
     """(fill, stroke, dash-array) for one node — five buckets lifted from the original
     mockup's own legend (already validated against real pilot data, not aesthetic guessing):
-    work/resolved-or-superseded -> green, work/open+actionable -> blue,
+    resolved-or-superseded (either kind) -> green, work/open+actionable -> blue,
     work/open+blocked -> gray, convergence/reached -> gold solid,
-    convergence/WIP -> orange dashed."""
+    convergence/WIP -> orange dashed.
+
+    `superseded` is checked before the kind split (BH_013 added it as a third, terminal
+    convergence status alongside work's own) so a superseded convergence node lands in the same
+    green "done" bucket a superseded work node already does, rather than falling through to the
+    orange-dashed WIP bucket below — a permanently-retired node visually implying "still active"
+    would be actively misleading, not just imprecise."""
+    if node.status == "superseded":
+        return "#2e7d4a", "#2e7d4a", ""
     if node.kind == "convergence":
         if node.status == "reached":
             return "#b8860b", "#f0c25a", ""
         return "#a3450f", "#ffb27a", "5,3"
-    if node.status in ("resolved", "superseded"):
+    if node.status == "resolved":
         return "#2e7d4a", "#2e7d4a", ""
     if actionable:
         return "#1565c0", "#1565c0", ""

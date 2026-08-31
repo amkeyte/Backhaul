@@ -3,14 +3,14 @@ id: BH_011
 uid: BH
 number: 11
 client: BH
-status: open
+status: done
 title: Required By blocks never regenerate
 context: dependents() is computed correctly by bhrm but never written back into a
   node's Required By section, so it goes stale silently (confirmed wrong on ~10 real
   mcRepos nodes). See BKHL_005 (mcRepos).
 priority: normal
 opened: '2026-08-24'
-closed: null
+closed: '2026-08-28'
 ---
 
 <!-- board:start -->

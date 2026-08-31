@@ -33,6 +33,7 @@ def create_role(
     authority: str | None = None,
     reports_to: str | None = None,
     status: str = "active",
+    launch_target: str = "cowork",
     today: date | None = None,
 ) -> Path:
     """Create a new role page under roles_root/<slug>.md and return its path.
@@ -57,6 +58,7 @@ def create_role(
         authority=authority,
         reports_to=reports_to,
         status=status,
+        launch_target=launch_target,
         updated=role_date,
     )
 
