@@ -373,3 +373,5 @@ src/Backhaul/config/projects.json
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/config/config.local.example.json
+/backhaul/config.local.json
