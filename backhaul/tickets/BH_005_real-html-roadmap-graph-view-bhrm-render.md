@@ -141,5 +141,5 @@ deferred).
   (`test_render_index_links_html_graph_view_when_present` and siblings in `tests/test_roadmap.py`,
   CLI test in `tests/test_roadmap_cli.py`). Full suite green (300 passed).
 <!-- bh-header:start -->
-**Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_local/source/Backhaul)
+**Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_LocalFiles/source/repos/Backhaul)
 <!-- bh-header:end -->

@@ -92,5 +92,5 @@ Priority: normal — explicitly requested, not a self-generated backlog idea lik
   confirmation for both `index` and `refresh` in `tests/test_roadmap_cli.py`. Docs:
   `wiki/meta/bhrm.md`. Full suite green (316 passed). Closed.
 <!-- bh-header:start -->
-**Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_local/source/Backhaul)
+**Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_LocalFiles/source/repos/Backhaul)
 <!-- bh-header:end -->

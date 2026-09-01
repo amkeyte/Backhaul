@@ -361,6 +361,7 @@ MigrationBackup/
 
 # Backhaul: per-machine config, never committed (see migration/MIGRATION_PLAN.md §6)
 config/config.local.json
+/backhaul/config.local.json
 src/Backhaul/config/config.local.json
 
 # Backhaul: per-machine project registry (name -> config.local.json path), never committed
@@ -373,5 +374,4 @@ src/Backhaul/config/projects.json
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-/config/config.local.example.json
-/backhaul/config.local.json
+

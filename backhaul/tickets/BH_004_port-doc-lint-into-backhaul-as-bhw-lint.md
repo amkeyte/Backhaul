@@ -119,5 +119,5 @@ asserting exact findings), `wiki/meta/bhw.md` or a new `wiki/meta/backhaul.md` c
   subcommand, tests (`tests/test_lint.py`, CLI tests in `tests/test_dashboard.py`), docs
   (`wiki/meta/backhaul.md`, new). Full suite green (296 passed). Closed.
 <!-- bh-header:start -->
-**Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_local/source/Backhaul)
+**Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_LocalFiles/source/repos/Backhaul)
 <!-- bh-header:end -->

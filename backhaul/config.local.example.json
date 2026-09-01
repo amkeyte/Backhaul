@@ -1,0 +1,15 @@
+{
+  "version": "0.1.0",
+  "project_name": "Backhaul",
+  "content_roots": {
+    "tickets": "PATH/TO/THIS/CHECKOUT/backhaul/tickets",
+    "wiki": "PATH/TO/THIS/CHECKOUT/backhaul/wiki",
+    "roadmap": "PATH/TO/THIS/CHECKOUT/backhaul/roadmap",
+    "roles": "PATH/TO/THIS/CHECKOUT/backhaul/roles"
+  },
+  "enabled_modules": ["roadmap", "roles"],
+  "client_folders": {
+    "BH": "PATH/TO/THIS/CHECKOUT"
+  },
+  "host_root": "PATH/TO/THIS/CHECKOUT"
+}

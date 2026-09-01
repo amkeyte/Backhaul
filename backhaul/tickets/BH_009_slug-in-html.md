@@ -58,5 +58,5 @@ in output), docs (`wiki/meta/bhrm.md`).
 - 2026-08-16: Implemented same session — see Design above. Full suite green (320 passed).
   Regenerated both mcRepos graphs via `bhrm index` to confirm live. Closed.
 <!-- bh-header:start -->
-**Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_local/source/Backhaul)
+**Backhaul** — [Dashboard](../../BACKHAUL.md) · [Board](../BOARD.md) · [Folder](openfolder:///C:/_LocalFiles/source/repos/Backhaul)
 <!-- bh-header:end -->
