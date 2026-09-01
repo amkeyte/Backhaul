@@ -1,7 +1,0 @@
-{
-  "id": "handlers.editmd",
-  "version": "0.1.0",
-  "kind": "module",
-  "description": "editmd: URL-protocol handler (VBS + .reg + link-builder) — opens markdown files in Notepad++.",
-  "requires": ["foundation"]
-}

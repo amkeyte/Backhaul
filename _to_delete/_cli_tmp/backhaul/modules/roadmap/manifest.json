@@ -1,8 +1,0 @@
-{
-  "id": "roadmap",
-  "version": "0.1.0",
-  "short_code": "BHRM",
-  "kind": "module",
-  "description": "Dependency-graph roadmap tracking: work/convergence nodes, DependsOn edges, frontier/downstream/blocking queries. One independent graph per client UID (RM_<uid>_NNN).",
-  "requires": ["foundation"]
-}

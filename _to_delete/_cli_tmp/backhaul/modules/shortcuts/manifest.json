@@ -1,7 +1,0 @@
-{
-  "id": "shortcuts",
-  "version": "0.1.0",
-  "kind": "module",
-  "description": "Windows .lnk shortcut creation (pylnk3-based), FOLDER/FILE PIDL segment typing fix.",
-  "requires": ["foundation"]
-}

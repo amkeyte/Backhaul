@@ -372,6 +372,9 @@ src/Backhaul/config/projects.json
 .venv/
 *.egg-info/
 
+# Backhaul: trash can
+_to_delete/
+
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 

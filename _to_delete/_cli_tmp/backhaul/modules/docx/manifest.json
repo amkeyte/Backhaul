@@ -1,7 +1,0 @@
-{
-  "id": "docx",
-  "version": "0.1.0",
-  "kind": "module",
-  "description": "OOXML unpack/edit/repack workflow for .docx/.dotx: headers, footers, tables, styles.",
-  "requires": ["foundation"]
-}
